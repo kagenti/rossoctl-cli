@@ -1,0 +1,160 @@
+package cmd
+
+import (
+	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
+	"text/tabwriter"
+
+	"github.com/spf13/cobra"
+
+	"github.com/kagenti/rossoctl-cli/internal/apiclient"
+)
+
+var (
+	agentsListJSON       bool
+	agentsListNamespaces []string
+)
+
+var agentsListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List agents",
+	Long: `List agents reported by the server (GET <server>/agents).
+
+Use --namespaces to list agents across one or more namespaces; a separate
+request (GET <server>/agents?namespace=<namespace>) is made for each, and the
+results are combined. When --namespaces is omitted, the set of namespaces is
+discovered from the server (GET <server>/namespaces) and agents are listed
+across all of them.
+
+By default the combined agents are printed as a single human-readable table
+with a NAMESPACE column. With --json each namespace's raw response is printed
+unchanged, separated by a line containing "---".`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		client := newClient(cmd)
+
+		// When --namespaces is empty, discover the namespaces to query via
+		// the same mechanism as `namespaces list` (GET /namespaces) and list
+		// agents in each, rather than falling back to a single default-
+		// namespace request.
+		namespaces := agentsListNamespaces
+		if len(namespaces) == 0 {
+			nsResp, err := client.ListNamespaces(cmd.Context(), true)
+			if err != nil {
+				return err
+			}
+			namespaces = nsResp.Namespaces
+		}
+
+		responses := make([]*apiclient.AgentListResponse, 0, len(namespaces))
+		for _, ns := range namespaces {
+			resp, err := client.ListAgents(cmd.Context(), ns)
+			if err != nil {
+				return err
+			}
+			responses = append(responses, resp)
+		}
+
+		if agentsListJSON {
+			return printAgentsJSON(cmd, responses)
+		}
+
+		// Combine all namespaces' agents into one table.
+		var agents []apiclient.AgentSummary
+		for _, resp := range responses {
+			agents = append(agents, resp.Items...)
+		}
+		printAgentsTable(cmd, agents)
+		return nil
+	},
+}
+
+// printAgentsJSON prints each namespace's response as indented JSON, separated
+// by a line containing "---".
+func printAgentsJSON(cmd *cobra.Command, responses []*apiclient.AgentListResponse) error {
+	out := cmd.OutOrStdout()
+	for i, resp := range responses {
+		if i > 0 {
+			fmt.Fprintln(out, "---")
+		}
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(resp); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func printAgentsTable(cmd *cobra.Command, agents []apiclient.AgentSummary) {
+	out := cmd.OutOrStdout()
+
+	if len(agents) == 0 {
+		fmt.Fprintln(out, "No agents found.")
+		return
+	}
+
+	// Stable ordering: namespace then name.
+	sort.Slice(agents, func(i, j int) bool {
+		if agents[i].Namespace != agents[j].Namespace {
+			return agents[i].Namespace < agents[j].Namespace
+		}
+		return agents[i].Name < agents[j].Name
+	})
+
+	w := tabwriter.NewWriter(out, 0, 0, 3, ' ', 0)
+	fmt.Fprintln(w, "NAME\tNAMESPACE\tSTATUS\tWORKLOAD\tPROTOCOL\tDESCRIPTION")
+	for _, a := range agents {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			a.Name,
+			a.Namespace,
+			a.Status,
+			deref(a.WorkloadType),
+			strings.Join(a.Labels.Protocol, ","),
+			truncate(a.Description),
+		)
+	}
+	_ = w.Flush()
+}
+
+// deref returns the pointed-to string, or "-" when the pointer is nil.
+func deref(s *string) string {
+	if s == nil || *s == "" {
+		return "-"
+	}
+	return *s
+}
+
+// truncate shortens s to at most 30 characters for table display: strings
+// longer than 30 are cut to their first 27 characters with "..." appended.
+func truncate(s string) string {
+	const max = 30
+	if len(s) <= max {
+		return s
+	}
+	return s[:max-3] + "..."
+}
+
+func init() {
+	agentsCmd := newGroup("agents", "Manage agents")
+
+	agentsListCmd.Flags().BoolVar(&agentsListJSON, "json", false, "print the raw JSON response unchanged")
+	agentsListCmd.Flags().StringSliceVarP(&agentsListNamespaces, "namespaces", "n", nil, "namespaces to list agents in (repeatable or comma-separated; default: server default)")
+
+	agentsCmd.AddCommand(
+		newLeaf("add-skill [name]", "Add a skill to an agent"),
+		newLeaf("chat [name]", "Start an interactive chat with an agent"),
+		newLeaf("connect [name]", "Connect an agent to a tool"),
+		newLeaf("delete [name]", "Delete an agent"),
+		newAgentsImportCmd(),
+		newLeaf("describe [name]", "Show detailed information about an agent"),
+		newLeaf("hibernate [name]", "Hibernate an agent"),
+		agentsListCmd,
+		newLeaf("promote [name]", "Promote an agent between namespaces"),
+		newLeaf("scale [name]", "Scale an agent"),
+		newLeaf("wake [name]", "Wake a hibernated agent"),
+	)
+	rootCmd.AddCommand(agentsCmd)
+}

@@ -1,0 +1,221 @@
+// Package apiclient is a thin HTTP client for the Rossoctl backend API.
+//
+// Like the other internal packages it is free of Cobra: it takes a base
+// server URI and returns decoded results (or errors), so it can be tested
+// against an httptest.Server without involving the command tree.
+package apiclient
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+)
+
+// Client talks to a Rossoctl API server rooted at BaseURL.
+type Client struct {
+	// BaseURL is the API root, e.g. http://host:8080/api/v1/. A trailing
+	// slash is optional; paths are joined relative to it.
+	BaseURL string
+
+	// HTTPClient is used for requests. If nil, a client with a sensible
+	// timeout is used.
+	HTTPClient *http.Client
+
+	// Logf, if set, is called to log each HTTP request and its outcome.
+	// The command layer wires this to stderr when --verbose is given; when
+	// nil, no logging happens. Kept as a plain function so this package
+	// stays free of any logging or CLI dependency.
+	Logf func(format string, args ...any)
+}
+
+func (c *Client) logf(format string, args ...any) {
+	if c.Logf != nil {
+		c.Logf(format, args...)
+	}
+}
+
+// AuthConfig mirrors the backend's AuthConfigResponse (GET /auth/config).
+// Pointer fields are used for the optional values so that "absent" (null)
+// is distinguishable from "empty string" when rendering.
+type AuthConfig struct {
+	Enabled     bool    `json:"enabled"`
+	KeycloakURL *string `json:"keycloak_url"`
+	Realm       *string `json:"realm"`
+	ClientID    *string `json:"client_id"`
+	RedirectURI *string `json:"redirect_uri"`
+}
+
+func (c *Client) httpClient() *http.Client {
+	if c.HTTPClient != nil {
+		return c.HTTPClient
+	}
+	return &http.Client{Timeout: 30 * time.Second}
+}
+
+// resolve joins ref onto BaseURL, treating BaseURL as a directory (so the
+// last path segment of the base is preserved rather than replaced).
+func (c *Client) resolve(ref string) (string, error) {
+	base := c.BaseURL
+	if base == "" {
+		return "", fmt.Errorf("server URI is empty")
+	}
+	if !strings.HasSuffix(base, "/") {
+		base += "/"
+	}
+	baseURL, err := url.Parse(base)
+	if err != nil {
+		return "", fmt.Errorf("invalid server URI %q: %w", c.BaseURL, err)
+	}
+	refURL, err := url.Parse(strings.TrimPrefix(ref, "/"))
+	if err != nil {
+		return "", fmt.Errorf("invalid path %q: %w", ref, err)
+	}
+	return baseURL.ResolveReference(refURL).String(), nil
+}
+
+// getJSON performs a GET on the resolved path and decodes the JSON body
+// into out.
+func (c *Client) getJSON(ctx context.Context, path string, out any) error {
+	endpoint, err := c.resolve(path)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	c.logf("GET %s", endpoint)
+	start := time.Now()
+	resp, err := c.httpClient().Do(req)
+	if err != nil {
+		c.logf("GET %s failed after %s: %v", endpoint, time.Since(start).Round(time.Millisecond), err)
+		return fmt.Errorf("requesting %s: %w", endpoint, err)
+	}
+	defer resp.Body.Close()
+	c.logf("GET %s -> %s (%s)", endpoint, resp.Status, time.Since(start).Round(time.Millisecond))
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		msg := strings.TrimSpace(string(body))
+		if msg == "" {
+			msg = resp.Status
+		}
+		return fmt.Errorf("%s returned %d: %s", endpoint, resp.StatusCode, msg)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("decoding response from %s: %w", endpoint, err)
+	}
+	return nil
+}
+
+// GetAuthConfig fetches GET /auth/config from the server.
+func (c *Client) GetAuthConfig(ctx context.Context) (*AuthConfig, error) {
+	var cfg AuthConfig
+	if err := c.getJSON(ctx, "auth/config", &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+// ResourceLabels mirrors the backend's ResourceLabels model.
+type ResourceLabels struct {
+	Protocol  []string `json:"protocol"`
+	Framework *string  `json:"framework"`
+	Type      *string  `json:"type"`
+}
+
+// AgentSummary mirrors the backend's AgentSummary model (one entry in the
+// GET /agents response).
+type AgentSummary struct {
+	Name         string         `json:"name"`
+	Namespace    string         `json:"namespace"`
+	Description  string         `json:"description"`
+	Status       string         `json:"status"`
+	Labels       ResourceLabels `json:"labels"`
+	WorkloadType *string        `json:"workloadType"`
+	CreatedAt    *string        `json:"createdAt"`
+}
+
+// AgentListResponse mirrors the backend's AgentListResponse model.
+type AgentListResponse struct {
+	Items []AgentSummary `json:"items"`
+}
+
+// ListAgents fetches GET /agents for the given namespace. If namespace is
+// empty the server's default namespace is used.
+func (c *Client) ListAgents(ctx context.Context, namespace string) (*AgentListResponse, error) {
+	path := "agents"
+	if namespace != "" {
+		path += "?namespace=" + url.QueryEscape(namespace)
+	}
+
+	var resp AgentListResponse
+	if err := c.getJSON(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ToolSummary mirrors the backend's ToolSummary model (one entry in the
+// GET /tools response). It has the same shape as AgentSummary.
+type ToolSummary struct {
+	Name         string         `json:"name"`
+	Namespace    string         `json:"namespace"`
+	Description  string         `json:"description"`
+	Status       string         `json:"status"`
+	Labels       ResourceLabels `json:"labels"`
+	WorkloadType *string        `json:"workloadType"`
+	CreatedAt    *string        `json:"createdAt"`
+}
+
+// ToolListResponse mirrors the backend's ToolListResponse model.
+type ToolListResponse struct {
+	Items []ToolSummary `json:"items"`
+}
+
+// ListTools fetches GET /tools for the given namespace. If namespace is empty
+// the server's default namespace is used.
+func (c *Client) ListTools(ctx context.Context, namespace string) (*ToolListResponse, error) {
+	path := "tools"
+	if namespace != "" {
+		path += "?namespace=" + url.QueryEscape(namespace)
+	}
+
+	var resp ToolListResponse
+	if err := c.getJSON(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// NamespaceListResponse mirrors the backend's NamespaceListResponse model.
+type NamespaceListResponse struct {
+	Namespaces []string `json:"namespaces"`
+}
+
+// ListNamespaces fetches GET /namespaces. When enabledOnly is true (the
+// server default), only kagenti-enabled namespaces are returned; otherwise
+// all namespaces are returned.
+func (c *Client) ListNamespaces(ctx context.Context, enabledOnly bool) (*NamespaceListResponse, error) {
+	// The server defaults enabled_only to true, so only send the parameter
+	// when we want the non-default (false) behavior.
+	path := "namespaces"
+	if !enabledOnly {
+		path += "?enabled_only=false"
+	}
+
+	var resp NamespaceListResponse
+	if err := c.getJSON(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}

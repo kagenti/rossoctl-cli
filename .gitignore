@@ -1,0 +1,10 @@
+# Build output
+/bin/
+/dist/
+
+# Go test / coverage artifacts
+*.out
+*.test
+
+# Editor / OS
+.DS_Store
