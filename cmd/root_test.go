@@ -2,12 +2,32 @@ package cmd
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
+
+// TestMain isolates HOME to a throwaway directory for the whole cmd test
+// binary, so no test can create or mutate the real ~/.rossoctl/config.yaml
+// when a command resolves its server via the context config.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "rossoctl-cmd-test-home")
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("HOME", dir)
+	// Never spawn a real browser during the device-login tests, and don't
+	// actually sleep between token polls.
+	browserOpener = func(string) error { return nil }
+	deviceflowSleep = func(time.Duration) {}
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
 
 // execute runs the given args against the root command tree and returns
 // whatever was written to stdout/stderr plus any error. Cobra shares global
@@ -101,7 +121,7 @@ func TestVersionCommand(t *testing.T) {
 var unimplementedCommands = [][]string{
 	{"apply"},
 	{"install"},
-	{"login"},
+	// "login" is implemented (sets the current context's token); tested in login_test.go.
 	{"status"},
 	{"uninstall"},
 	{"agents", "add-skill"},
@@ -182,7 +202,7 @@ func TestUnimplementedCommandsPrintPlaceholder(t *testing.T) {
 // description, so we check that the standalone placeholder line was not
 // printed rather than that the substring is absent.
 func TestGroupsAreNotRunnable(t *testing.T) {
-	groups := []string{"agents", "gateway", "images", "namespaces", "skills", "tools", "ui"}
+	groups := []string{"agents", "config", "gateway", "images", "namespaces", "skills", "tools", "ui"}
 	for _, g := range groups {
 		t.Run(g, func(t *testing.T) {
 			out, err := execute(t, g)

@@ -214,6 +214,40 @@ func TestLogfCalledPerRequest(t *testing.T) {
 	}
 }
 
+func TestBearerTokenHeader(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"enabled": false}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/", BearerToken: "sekret"}
+	if _, err := c.GetAuthConfig(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotAuth != "Bearer sekret" {
+		t.Errorf("Authorization = %q, want %q", gotAuth, "Bearer sekret")
+	}
+}
+
+func TestNoBearerTokenNoHeader(t *testing.T) {
+	var hadAuth bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, hadAuth = r.Header["Authorization"]
+		_, _ = w.Write([]byte(`{"enabled": false}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/"} // no token
+	if _, err := c.GetAuthConfig(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hadAuth {
+		t.Error("Authorization header sent when no BearerToken set")
+	}
+}
+
 func TestNilLogfIsSafe(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"enabled": false}`))

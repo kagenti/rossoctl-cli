@@ -6,7 +6,6 @@ func init() {
 	rootCmd.AddCommand(
 		newLeaf("apply", "Apply a resource from a file"),
 		newLeaf("install", "Install the Rossoctl platform"),
-		newLeaf("login", "Log in to Rossoctl"),
 		newLeaf("status", "Show platform status"),
 		newLeaf("uninstall", "Uninstall the Rossoctl platform"),
 	)

@@ -26,6 +26,10 @@ type Client struct {
 	// timeout is used.
 	HTTPClient *http.Client
 
+	// BearerToken, if non-empty, is sent as an Authorization: Bearer header on
+	// every request.
+	BearerToken string
+
 	// Logf, if set, is called to log each HTTP request and its outcome.
 	// The command layer wires this to stderr when --verbose is given; when
 	// nil, no logging happens. Kept as a plain function so this package
@@ -91,6 +95,9 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
+	if c.BearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.BearerToken)
+	}
 
 	c.logf("GET %s", endpoint)
 	start := time.Now()

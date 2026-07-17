@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kagenti/rossoctl-cli/internal/apiclient"
+	"github.com/kagenti/rossoctl-cli/internal/config"
 )
 
 // These are set at build time via -ldflags. See the Makefile.
@@ -47,19 +48,64 @@ command tree, while the actual work is implemented in packages under internal/.`
 	SilenceErrors: true,
 }
 
-// newClient builds an API client targeting the --server URI. When --verbose
-// is set, it attaches a logger that writes one line per HTTP request to the
-// command's stderr, so verbose output never mixes with the --json/table
-// results on stdout.
-func newClient(cmd *cobra.Command) *apiclient.Client {
-	client := &apiclient.Client{BaseURL: server}
+// serverOrDefault returns the explicitly supplied --server value, or the
+// built-in default when --server was not given. Used as the seed value when a
+// context must be created.
+func serverOrDefault() string {
+	if server != "" {
+		return server
+	}
+	return defaultServer
+}
+
+// resolveServer determines the effective server URI and bearer token for a
+// command:
+//
+//   - An explicit (non-empty) --server wins and overrides any context; no
+//     token is used in that case.
+//   - Otherwise the current context supplies both the server URI and its
+//     bearer token. The context config is created (and seeded from the default
+//     server) on first use if it does not yet exist.
+func resolveServer() (serverURI, token string, err error) {
+	if server != "" {
+		return server, "", nil
+	}
+
+	path, err := config.DefaultPath()
+	if err != nil {
+		return "", "", err
+	}
+	cfg, err := config.EnsureContext(path, defaultServer)
+	if err != nil {
+		return "", "", err
+	}
+	cur, ok := cfg.Current()
+	if !ok {
+		// EnsureContext guarantees a current context; treat its absence as a
+		// programming error rather than silently falling back.
+		return "", "", fmt.Errorf("no current context in %s", path)
+	}
+	return cur.Server, cur.BearerToken, nil
+}
+
+// newClient builds an API client for the effective server (see resolveServer).
+// When --verbose is set, it attaches a logger that writes one line per HTTP
+// request to the command's stderr, so verbose output never mixes with the
+// --json/table results on stdout.
+func newClient(cmd *cobra.Command) (*apiclient.Client, error) {
+	serverURI, token, err := resolveServer()
+	if err != nil {
+		return nil, err
+	}
+
+	client := &apiclient.Client{BaseURL: serverURI, BearerToken: token}
 	if verbose {
 		errOut := cmd.ErrOrStderr()
 		client.Logf = func(format string, args ...any) {
 			fmt.Fprintf(errOut, format+"\n", args...)
 		}
 	}
-	return client
+	return client, nil
 }
 
 // Execute runs the root command. It is the single entry point called from
@@ -73,5 +119,5 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
-	rootCmd.PersistentFlags().StringVar(&server, "server", defaultServer, "Rossoctl API server URI")
+	rootCmd.PersistentFlags().StringVar(&server, "server", "", "Rossoctl API server URI (overrides the current context; default: current context's server)")
 }
