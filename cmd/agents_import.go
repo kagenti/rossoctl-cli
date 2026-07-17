@@ -1,20 +1,29 @@
 package cmd
 
-import "github.com/spf13/cobra"
+import (
+	"fmt"
 
-// defaultImportNamespace is the namespace agents are imported into unless
-// --namespace is given.
-const defaultImportNamespace = "team1"
+	"github.com/spf13/cobra"
+
+	"github.com/kagenti/rossoctl-cli/internal/apiclient"
+)
+
+// importDeploymentType backs the persistent --deployment-type flag on the
+// import group, inherited by from-image and from-source. It maps to the
+// backend's workloadType.
+var importDeploymentType string
 
 // newAgentsImportCmd builds the `agents import` command and its two
-// subcommands, `from-image` and `from-source`. Flag values are bound to
-// closure-local variables so each command owns its own state.
+// subcommands, `from-image` and `from-source`.
 //
-// The subcommands currently print UNIMPLEMENTED like the other stubs, but
-// unlike newLeaf they define real flags (mirroring the backend's
-// CreateAgentRequest fields), so the documented invocations parse correctly.
+// The namespace for the created agent comes from the agents group's
+// --namespace flag (or the current context), via agentsNamespace().
 func newAgentsImportCmd() *cobra.Command {
 	importCmd := newGroup("import", "Import an agent from an image or from source")
+
+	// Persistent so both subcommands inherit it.
+	importCmd.PersistentFlags().StringVar(&importDeploymentType, "deployment-type", "deployment",
+		"workload type for the agent: deployment|statefulset|job|sandbox")
 
 	importCmd.AddCommand(
 		newAgentsImportFromImageCmd(),
@@ -25,7 +34,6 @@ func newAgentsImportCmd() *cobra.Command {
 
 func newAgentsImportFromImageCmd() *cobra.Command {
 	var (
-		namespace       string
 		name            string
 		envVarsURL      string
 		containerImage  string
@@ -34,18 +42,57 @@ func newAgentsImportFromImageCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "from-image",
-		Short: unimplementedPrefix + "Import an agent from an existing container image",
-		Args:  cobra.NoArgs,
+		Short: "Import an agent from an existing container image",
+		Long: `Import an agent from an existing container image (POST <server>/agents).
+
+The agent is created in the namespace from the agents --namespace flag, or the
+current context's namespace. --deployment-type selects the workload type. Env
+vars are fetched from --envVarsURL (newline-separated key=value pairs).`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return unimplementedRunE(cmd, nil)
+			if name == "" {
+				return fmt.Errorf("--name is required")
+			}
+			if containerImage == "" {
+				return fmt.Errorf("--containerImage is required")
+			}
+
+			namespace, err := agentsNamespace()
+			if err != nil {
+				return err
+			}
+
+			envVars, err := fetchEnvVars(cmd.Context(), cmd, envVarsURL)
+			if err != nil {
+				return err
+			}
+
+			client, err := newClient(cmd)
+			if err != nil {
+				return err
+			}
+			resp, err := client.CreateAgent(cmd.Context(), &apiclient.CreateAgentRequest{
+				Name:             name,
+				Namespace:        namespace,
+				DeploymentMethod: "image",
+				WorkloadType:     importDeploymentType,
+				ContainerImage:   containerImage,
+				ImagePullSecret:  imagePullSecret,
+				EnvVars:          envVars,
+			})
+			if err != nil {
+				return err
+			}
+
+			printCreateAgentResult(cmd, resp, name, namespace)
+			return nil
 		},
 	}
 
 	f := cmd.Flags()
-	f.StringVarP(&namespace, "namespace", "n", defaultImportNamespace, "namespace to import the agent into")
-	f.StringVar(&name, "name", "", "name of the agent")
-	f.StringVar(&envVarsURL, "envVarsURL", "", "URL to fetch environment variables from")
-	f.StringVar(&containerImage, "containerImage", "", "container image to deploy")
+	f.StringVar(&name, "name", "", "name of the agent (required)")
+	f.StringVar(&envVarsURL, "envVarsURL", "", "URL to fetch environment variables from (newline-separated key=value)")
+	f.StringVar(&containerImage, "containerImage", "", "container image to deploy (required)")
 	f.StringVar(&imagePullSecret, "imagePullSecret", "", "name of the image pull secret")
 
 	return cmd
@@ -53,7 +100,6 @@ func newAgentsImportFromImageCmd() *cobra.Command {
 
 func newAgentsImportFromSourceCmd() *cobra.Command {
 	var (
-		namespace  string
 		name       string
 		envVarsURL string
 		gitURL     string
@@ -71,7 +117,6 @@ func newAgentsImportFromSourceCmd() *cobra.Command {
 	}
 
 	f := cmd.Flags()
-	f.StringVarP(&namespace, "namespace", "n", defaultImportNamespace, "namespace to import the agent into")
 	f.StringVar(&name, "name", "", "name of the agent")
 	f.StringVar(&envVarsURL, "envVarsURL", "", "URL to fetch environment variables from")
 	f.StringVar(&gitURL, "gitUrl", "", "git repository URL to build from")
@@ -79,4 +124,14 @@ func newAgentsImportFromSourceCmd() *cobra.Command {
 	f.StringVar(&gitBranch, "gitBranch", "main", "git branch to build from")
 
 	return cmd
+}
+
+// printCreateAgentResult reports the outcome of a create request, preferring
+// the server's message.
+func printCreateAgentResult(cmd *cobra.Command, resp *apiclient.CreateAgentResponse, name, namespace string) {
+	if resp.Message != "" {
+		cmd.Println(resp.Message)
+		return
+	}
+	cmd.Printf("Agent %q created in namespace %q.\n", name, namespace)
 }

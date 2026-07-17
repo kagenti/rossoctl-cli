@@ -85,6 +85,12 @@ rossoctl agents get orders --json               # raw JSON
 # Delete an agent (DELETE <server>/agents/<namespace>/<name>)
 rossoctl agents delete orders
 
+# Import an agent from a container image (POST <server>/agents)
+rossoctl agents import from-image --name orders --containerImage ghcr.io/x/y:latest
+rossoctl agents import --deployment-type sandbox from-image \
+    --name orders --containerImage ghcr.io/x/y:latest --imagePullSecret regcred \
+    --envVarsURL https://example.com/orders.env   # newline-separated key=value
+
 # `agents --namespace` overrides the current context's namespace for any agents subcommand
 rossoctl agents --namespace team2 get orders    # -> GET /agents/team2/orders
 rossoctl agents --namespace team2 list          # list just team2 (no discovery)
@@ -132,6 +138,6 @@ The command tree mirrors the subcommands referenced in the Rossoctl docs
 plus `auth-config` and the top-level `apply`, `install`, `login`, `status`,
 `uninstall`). The
 `config` context commands, `login`, `auth-config`, `agents list`,
-`agents get`, `agents delete`, `tools list`, and `namespaces list` are
-implemented; other leaf commands currently print `UNIMPLEMENTED` as a
-placeholder.
+`agents get`, `agents delete`, `agents import from-image`, `tools list`, and
+`namespaces list` are implemented; other leaf commands currently print
+`UNIMPLEMENTED` as a placeholder.

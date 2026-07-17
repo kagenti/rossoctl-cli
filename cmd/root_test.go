@@ -159,11 +159,11 @@ func TestUnimplementedDescriptionsPrefixed(t *testing.T) {
 		t.Errorf("stub `agents describe` Short = %q, want UNIMPLEMENTED prefix", c.Short)
 	}
 
-	// A stub import subcommand: `agents import from-image`.
-	if c, _, _ := rootCmd.Find([]string{"agents", "import", "from-image"}); c == nil {
-		t.Fatal("agents import from-image not found")
+	// A stub import subcommand: `agents import from-source`.
+	if c, _, _ := rootCmd.Find([]string{"agents", "import", "from-source"}); c == nil {
+		t.Fatal("agents import from-source not found")
 	} else if !strings.HasPrefix(c.Short, "UNIMPLEMENTED") {
-		t.Errorf("stub `agents import from-image` Short = %q, want UNIMPLEMENTED prefix", c.Short)
+		t.Errorf("stub `agents import from-source` Short = %q, want UNIMPLEMENTED prefix", c.Short)
 	}
 
 	// An implemented command must NOT be prefixed.

@@ -2,6 +2,10 @@ package cmd
 
 import "github.com/spf13/cobra"
 
+// defaultImportNamespace is the namespace the (stub) tools import subcommands
+// default to unless --namespace is given.
+const defaultImportNamespace = "team1"
+
 // newToolsImportCmd builds the `tools import` command and its two subcommands,
 // `from-image` and `from-source`, mirroring `agents import`. Flag values are
 // bound to closure-local variables so each command owns its own state.
