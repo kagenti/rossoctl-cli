@@ -32,9 +32,9 @@ jobs:
           - { osext: Darwin, os_arch: x86_64, goos: darwin, goarch: amd64 }
           - { osext: Darwin, os_arch: arm64, goos: darwin, goarch: arm64 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -79,7 +79,7 @@ jobs:
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
 
       - name: Upload asset to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.version }}
           files: ${{ steps.package.outputs.archive }}
