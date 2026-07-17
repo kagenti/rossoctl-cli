@@ -172,6 +172,54 @@ func (c *Client) ListAgents(ctx context.Context, namespace string) (*AgentListRe
 	return &resp, nil
 }
 
+// AgentMetadata is the metadata block of an agent detail response.
+type AgentMetadata struct {
+	Name              string            `json:"name"`
+	Namespace         string            `json:"namespace"`
+	Labels            map[string]string `json:"labels"`
+	Annotations       map[string]string `json:"annotations"`
+	CreationTimestamp *string           `json:"creationTimestamp"`
+	UID               *string           `json:"uid"`
+}
+
+// ServicePort is one port of an agent's Service.
+type ServicePort struct {
+	Name       string `json:"name"`
+	Port       int    `json:"port"`
+	TargetPort any    `json:"targetPort"` // may be int or string
+}
+
+// ServiceInfo is the optional service block of an agent detail response.
+type ServiceInfo struct {
+	Name      string        `json:"name"`
+	Type      string        `json:"type"`
+	ClusterIP string        `json:"clusterIP"`
+	Ports     []ServicePort `json:"ports"`
+}
+
+// AgentDetail mirrors the backend's GET /agents/{namespace}/{name} response.
+// spec and status are workload-shaped and free-form, so they are kept as maps
+// and read opportunistically by the renderer.
+type AgentDetail struct {
+	Metadata     AgentMetadata  `json:"metadata"`
+	Spec         map[string]any `json:"spec"`
+	Status       map[string]any `json:"status"`
+	WorkloadType string         `json:"workloadType"`
+	ReadyStatus  string         `json:"readyStatus"`
+	Service      *ServiceInfo   `json:"service"`
+}
+
+// GetAgent fetches GET /agents/<namespace>/<name>.
+func (c *Client) GetAgent(ctx context.Context, namespace, name string) (*AgentDetail, error) {
+	path := "agents/" + url.PathEscape(namespace) + "/" + url.PathEscape(name)
+
+	var detail AgentDetail
+	if err := c.getJSON(ctx, path, &detail); err != nil {
+		return nil, err
+	}
+	return &detail, nil
+}
+
 // ToolSummary mirrors the backend's ToolSummary model (one entry in the
 // GET /tools response). It has the same shape as AgentSummary.
 type ToolSummary struct {

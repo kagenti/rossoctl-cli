@@ -153,6 +153,7 @@ func init() {
 		newLeaf("delete [name]", "Delete an agent"),
 		newAgentsImportCmd(),
 		newLeaf("describe [name]", "Show detailed information about an agent"),
+		agentsGetCmd,
 		newLeaf("hibernate [name]", "Hibernate an agent"),
 		agentsListCmd,
 		newLeaf("promote [name]", "Promote an agent between namespaces"),

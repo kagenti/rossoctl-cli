@@ -88,6 +88,25 @@ func resolveServer() (serverURI, token string, err error) {
 	return cur.Server, cur.BearerToken, nil
 }
 
+// currentNamespace returns the namespace of the current context, loading (and
+// lazily creating) the context config as needed. It returns an error if the
+// current context has no namespace set, since callers that need a namespace
+// cannot proceed without one.
+func currentNamespace() (string, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return "", err
+	}
+	cur, ok := cfg.Current()
+	if !ok {
+		return "", fmt.Errorf("no current context")
+	}
+	if cur.Namespace == "" {
+		return "", fmt.Errorf("current context %q has no namespace set; run `rossoctl config set-context --namespace <ns>`", cur.Name)
+	}
+	return cur.Namespace, nil
+}
+
 // newClient builds an API client for the effective server (see resolveServer).
 // When --verbose is set, it attaches a logger that writes one line per HTTP
 // request to the command's stderr, so verbose output never mixes with the
