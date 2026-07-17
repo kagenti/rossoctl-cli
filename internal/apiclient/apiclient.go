@@ -360,16 +360,28 @@ func (c *Client) DeleteTool(ctx context.Context, namespace, name string) (*Delet
 	return &resp, nil
 }
 
+// CreateServicePort mirrors the backend's ServicePort model (an entry in a
+// CreateToolRequest's servicePorts). It is a distinct type from ServicePort
+// (used for GET responses) because the request form has an integer
+// targetPort and an explicit protocol.
+type CreateServicePort struct {
+	Name       string `json:"name"`
+	Port       int    `json:"port"`
+	TargetPort int    `json:"targetPort"`
+	Protocol   string `json:"protocol"`
+}
+
 // CreateToolRequest is the subset of the backend's CreateToolRequest that the
 // CLI populates. Fields the server defaults are omitted; only what we set is
 // sent. deploymentMethod selects image vs source; workloadType selects
 // deployment|statefulset.
 type CreateToolRequest struct {
-	Name             string   `json:"name"`
-	Namespace        string   `json:"namespace"`
-	DeploymentMethod string   `json:"deploymentMethod"`
-	WorkloadType     string   `json:"workloadType"`
-	EnvVars          []EnvVar `json:"envVars,omitempty"`
+	Name             string              `json:"name"`
+	Namespace        string              `json:"namespace"`
+	DeploymentMethod string              `json:"deploymentMethod"`
+	WorkloadType     string              `json:"workloadType"`
+	EnvVars          []EnvVar            `json:"envVars,omitempty"`
+	ServicePorts     []CreateServicePort `json:"servicePorts,omitempty"`
 
 	// Image deployment fields.
 	ContainerImage  string `json:"containerImage,omitempty"`

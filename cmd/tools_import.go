@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -33,12 +35,16 @@ func newToolsImportCmd() *cobra.Command {
 	return importCmd
 }
 
+// defaultToolPort is the --ports default: a TCP port named "http" on 9090.
+var defaultToolPorts = []string{"http:9090:9090:TCP"}
+
 func newToolsImportFromImageCmd() *cobra.Command {
 	var (
 		name            string
 		envVarsURL      string
 		containerImage  string
 		imagePullSecret string
+		ports           []string
 	)
 
 	cmd := &cobra.Command{
@@ -68,6 +74,11 @@ vars are fetched from --envVarsURL (newline-separated key=value pairs).`,
 				return err
 			}
 
+			servicePorts, err := parseServicePorts(ports)
+			if err != nil {
+				return err
+			}
+
 			client, err := newClient(cmd)
 			if err != nil {
 				return err
@@ -80,6 +91,7 @@ vars are fetched from --envVarsURL (newline-separated key=value pairs).`,
 				ContainerImage:   containerImage,
 				ImagePullSecret:  imagePullSecret,
 				EnvVars:          envVars,
+				ServicePorts:     servicePorts,
 			})
 			if err != nil {
 				return err
@@ -95,8 +107,64 @@ vars are fetched from --envVarsURL (newline-separated key=value pairs).`,
 	f.StringVar(&envVarsURL, "envVarsURL", "", "URL to fetch environment variables from (newline-separated key=value)")
 	f.StringVar(&containerImage, "containerImage", "", "container image to deploy (required)")
 	f.StringVar(&imagePullSecret, "imagePullSecret", "", "name of the image pull secret")
+	f.StringSliceVar(&ports, "ports", defaultToolPorts,
+		`service ports as name:port:targetPort[:protocol] (repeatable or comma-separated); a bare "port" means http:port:port:TCP`)
 
 	return cmd
+}
+
+// parseServicePorts converts --ports entries into CreateServicePorts. Each
+// entry is "name:port:targetPort[:protocol]"; a bare "port" is shorthand for
+// name "http", targetPort equal to port, protocol TCP. protocol defaults to
+// TCP when omitted.
+func parseServicePorts(specs []string) ([]apiclient.CreateServicePort, error) {
+	var out []apiclient.CreateServicePort
+	for _, spec := range specs {
+		spec = strings.TrimSpace(spec)
+		if spec == "" {
+			continue
+		}
+		fields := strings.Split(spec, ":")
+
+		sp := apiclient.CreateServicePort{Name: "http", Protocol: "TCP"}
+		switch len(fields) {
+		case 1:
+			// "port" -> http:port:port:TCP
+			p, err := strconv.Atoi(fields[0])
+			if err != nil {
+				return nil, fmt.Errorf("invalid --ports %q: port must be an integer", spec)
+			}
+			sp.Port, sp.TargetPort = p, p
+		case 2, 3, 4:
+			sp.Name = fields[0]
+			if sp.Name == "" {
+				return nil, fmt.Errorf("invalid --ports %q: name must not be empty", spec)
+			}
+			p, err := strconv.Atoi(fields[1])
+			if err != nil {
+				return nil, fmt.Errorf("invalid --ports %q: port must be an integer", spec)
+			}
+			sp.Port = p
+			sp.TargetPort = p
+			if len(fields) >= 3 {
+				tp, err := strconv.Atoi(fields[2])
+				if err != nil {
+					return nil, fmt.Errorf("invalid --ports %q: targetPort must be an integer", spec)
+				}
+				sp.TargetPort = tp
+			}
+			if len(fields) == 4 {
+				if fields[3] == "" {
+					return nil, fmt.Errorf("invalid --ports %q: protocol must not be empty", spec)
+				}
+				sp.Protocol = fields[3]
+			}
+		default:
+			return nil, fmt.Errorf("invalid --ports %q: expected name:port:targetPort[:protocol]", spec)
+		}
+		out = append(out, sp)
+	}
+	return out, nil
 }
 
 func newToolsImportFromSourceCmd() *cobra.Command {

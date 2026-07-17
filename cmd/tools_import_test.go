@@ -93,8 +93,58 @@ func TestToolsImportFromImagePostsRequest(t *testing.T) {
 	if body["containerImage"] != "ghcr.io/x/y:latest" || body["imagePullSecret"] != "regcred" {
 		t.Errorf("image fields wrong: %+v", body)
 	}
+	// The default --ports must send a single http:9090:9090:TCP service port.
+	sp := servicePortsFromBody(t, body)
+	if len(sp) != 1 {
+		t.Fatalf("servicePorts = %+v, want 1 default entry", sp)
+	}
+	if sp[0]["name"] != "http" || sp[0]["port"] != float64(9090) ||
+		sp[0]["targetPort"] != float64(9090) || sp[0]["protocol"] != "TCP" {
+		t.Errorf("default servicePort = %+v, want http/9090/9090/TCP", sp[0])
+	}
 	if !strings.Contains(out, "Tool created") {
 		t.Errorf("output missing server message:\n%s", out)
+	}
+}
+
+func servicePortsFromBody(t *testing.T, body map[string]any) []map[string]any {
+	t.Helper()
+	raw, ok := body["servicePorts"].([]any)
+	if !ok {
+		t.Fatalf("servicePorts missing or wrong type: %+v", body["servicePorts"])
+	}
+	out := make([]map[string]any, len(raw))
+	for i, v := range raw {
+		out[i] = v.(map[string]any)
+	}
+	return out
+}
+
+func TestToolsImportFromImagePortsFlag(t *testing.T) {
+	isolateHome(t)
+	var body map[string]any
+	srv := newToolsImportServer(t, &body)
+	setupToolsImportContext(t, srv, "team1")
+
+	// Custom ports: a full spec and a bare-port shorthand.
+	if _, err := execute(t, "tools", "import", "from-image",
+		"--name", "weather-mcp", "--containerImage", "img",
+		"--ports", "grpc:9000:9001:TCP,8080"); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	sp := servicePortsFromBody(t, body)
+	if len(sp) != 2 {
+		t.Fatalf("servicePorts = %+v, want 2 entries", sp)
+	}
+	if sp[0]["name"] != "grpc" || sp[0]["port"] != float64(9000) ||
+		sp[0]["targetPort"] != float64(9001) || sp[0]["protocol"] != "TCP" {
+		t.Errorf("port[0] = %+v, want grpc/9000/9001/TCP", sp[0])
+	}
+	// Bare "8080" -> http:8080:8080:TCP.
+	if sp[1]["name"] != "http" || sp[1]["port"] != float64(8080) ||
+		sp[1]["targetPort"] != float64(8080) || sp[1]["protocol"] != "TCP" {
+		t.Errorf("port[1] = %+v, want http/8080/8080/TCP", sp[1])
 	}
 }
 

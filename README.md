@@ -109,6 +109,8 @@ rossoctl tools delete weather-mcp                # DELETE /tools/<namespace>/wea
 rossoctl tools import from-image --name weather-mcp --containerImage ghcr.io/x/y:latest  # POST /tools
 rossoctl tools import --deployment-type statefulset from-image \
     --name weather-mcp --containerImage ghcr.io/x/y:latest --envVarsURL https://example.com/tool.env
+# --ports sets service ports as name:port:targetPort[:protocol] (default http:9090:9090:TCP); a bare "port" = http:port:port:TCP
+rossoctl tools import from-image --name weather-mcp --containerImage ghcr.io/x/y:latest --ports grpc:9000:9001:TCP,8080
 
 # List namespaces (GET <server>/namespaces)
 rossoctl namespaces list
