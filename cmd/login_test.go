@@ -160,6 +160,10 @@ func TestLoginSeedsContextWhenMissing(t *testing.T) {
 	if cur.Server != defaultServer {
 		t.Errorf("seeded server = %q, want %q", cur.Server, defaultServer)
 	}
+	// The seeded context is named after the server's hostname, not the URI.
+	if cur.Name != "kagenti-ui.localtest.me" {
+		t.Errorf("seeded context name = %q, want the hostname kagenti-ui.localtest.me", cur.Name)
+	}
 	if cur.BearerToken != "tok" {
 		t.Errorf("token = %q, want tok", cur.BearerToken)
 	}

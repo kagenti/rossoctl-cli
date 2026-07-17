@@ -196,7 +196,7 @@ func TestCurrent(t *testing.T) {
 
 func TestEnsureContextSeedsFromDefault(t *testing.T) {
 	path := tmpConfigPath(t)
-	cfg, err := EnsureContext(path, "http://seed/api/v1/")
+	cfg, err := EnsureContext(path, "http://seed-host:8080/api/v1/")
 	if err != nil {
 		t.Fatalf("EnsureContext: %v", err)
 	}
@@ -204,8 +204,13 @@ func TestEnsureContextSeedsFromDefault(t *testing.T) {
 	if !ok {
 		t.Fatal("expected a current context after seeding")
 	}
-	if cur.Name != "http://seed/api/v1/" || cur.Server != "http://seed/api/v1/" {
-		t.Errorf("seeded context = %+v, want name+server = http://seed/api/v1/", cur)
+	// The context is named after the server's hostname (no port/path), but its
+	// server field keeps the full URI.
+	if cur.Name != "seed-host" {
+		t.Errorf("seeded context name = %q, want seed-host", cur.Name)
+	}
+	if cur.Server != "http://seed-host:8080/api/v1/" {
+		t.Errorf("seeded server = %q, want the full URI", cur.Server)
 	}
 	if cur.BearerToken != "" {
 		t.Errorf("seeded token = %q, want empty", cur.BearerToken)
@@ -218,6 +223,21 @@ func TestEnsureContextSeedsFromDefault(t *testing.T) {
 	}
 	if len(reloaded.Contexts) != 1 {
 		t.Errorf("expected 1 persisted context, got %d", len(reloaded.Contexts))
+	}
+}
+
+func TestContextNameForServer(t *testing.T) {
+	cases := []struct{ server, want string }{
+		{"http://kagenti-ui.localtest.me:8080/api/v1/", "kagenti-ui.localtest.me"},
+		{"https://api.example.com/api/v1/", "api.example.com"},
+		{"http://127.0.0.1:9090/", "127.0.0.1"},
+		{"not a url", "not a url"},         // unparseable -> raw fallback
+		{"/relative/path", "/relative/path"}, // no host -> raw fallback
+	}
+	for _, c := range cases {
+		if got := contextNameForServer(c.server); got != c.want {
+			t.Errorf("contextNameForServer(%q) = %q, want %q", c.server, got, c.want)
+		}
 	}
 }
 

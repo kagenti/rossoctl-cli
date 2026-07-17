@@ -9,6 +9,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -170,19 +171,35 @@ func (c *Config) Rename(oldName, newName string) error {
 	return nil
 }
 
+// contextNameForServer derives a short context name from a server URI: its
+// host (without port). It falls back to the host:port, and finally to the raw
+// string, when the URI can't be parsed or has no host — so the name is never
+// empty.
+func contextNameForServer(server string) string {
+	u, err := url.Parse(server)
+	if err != nil || u.Host == "" {
+		return server
+	}
+	if h := u.Hostname(); h != "" {
+		return h
+	}
+	return u.Host
+}
+
 // EnsureContext loads the config at path and, if it contains no contexts,
-// seeds one from defaultServer (using the server URI as the context name, with
-// an empty bearer token), makes it current, and saves. The resulting config is
-// returned. This is the single place the lazy create-if-missing behavior
-// lives.
+// seeds one from defaultServer (named after the server's hostname, with the
+// full URI as its server and an empty bearer token), makes it current, and
+// saves. The resulting config is returned. This is the single place the lazy
+// create-if-missing behavior lives.
 func EnsureContext(path, defaultServer string) (*Config, error) {
 	cfg, err := Load(path)
 	if err != nil {
 		return nil, err
 	}
 	if len(cfg.Contexts) == 0 {
-		cfg.Upsert(Context{Name: defaultServer, Server: defaultServer})
-		if err := cfg.SetCurrent(defaultServer); err != nil {
+		name := contextNameForServer(defaultServer)
+		cfg.Upsert(Context{Name: name, Server: defaultServer})
+		if err := cfg.SetCurrent(name); err != nil {
 			return nil, err
 		}
 		if err := cfg.Save(); err != nil {
