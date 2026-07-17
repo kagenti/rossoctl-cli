@@ -33,7 +33,10 @@ with a NAMESPACE column. With --json each namespace's raw response is printed
 unchanged, separated by a line containing "---".`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		client := newClient(cmd)
+		client, err := newClient(cmd)
+		if err != nil {
+			return err
+		}
 
 		// When --namespaces is empty, discover the namespaces to query via
 		// the same mechanism as `namespaces list` (GET /namespaces) and list

@@ -2,12 +2,27 @@ package cmd
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
+
+// TestMain isolates HOME to a throwaway directory for the whole cmd test
+// binary, so no test can create or mutate the real ~/.rossoctl/config.yaml
+// when a command resolves its server via the context config.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "rossoctl-cmd-test-home")
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("HOME", dir)
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
 
 // execute runs the given args against the root command tree and returns
 // whatever was written to stdout/stderr plus any error. Cobra shares global
@@ -182,7 +197,7 @@ func TestUnimplementedCommandsPrintPlaceholder(t *testing.T) {
 // description, so we check that the standalone placeholder line was not
 // printed rather than that the substring is absent.
 func TestGroupsAreNotRunnable(t *testing.T) {
-	groups := []string{"agents", "gateway", "images", "namespaces", "skills", "tools", "ui"}
+	groups := []string{"agents", "config", "gateway", "images", "namespaces", "skills", "tools", "ui"}
 	for _, g := range groups {
 		t.Run(g, func(t *testing.T) {
 			out, err := execute(t, g)

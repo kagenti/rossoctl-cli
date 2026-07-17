@@ -15,7 +15,8 @@ This project follows the standard Go CLI layout:
 │   ├── unimplemented.go        # newGroup/newLeaf helpers + UNIMPLEMENTED stub
 │   ├── toplevel.go             # apply, install, login, status, uninstall
 │   ├── agents.go               # `rossoctl agents ...` (`list` fetches GET /agents)
-│   ├── config.go               # `rossoctl config` (shows server auth config)
+│   ├── authconfig.go           # `rossoctl auth-config` (shows server auth config)
+│   ├── config.go               # `rossoctl config ...` (context management)
 │   ├── gateway.go              # `rossoctl gateway ...`
 │   ├── images.go               # `rossoctl images ...`
 │   ├── namespaces.go           # `rossoctl namespaces ...` (`list` fetches GET /namespaces)
@@ -24,7 +25,8 @@ This project follows the standard Go CLI layout:
 │   └── ui.go                   # `rossoctl ui ...`
 ├── internal/                   # Private application logic (not importable externally)
 │   ├── apiclient/              # HTTP client for the Rossoctl backend API
-│   └── buildinfo/              # Version metadata formatting
+│   ├── buildinfo/              # Version metadata formatting
+│   └── config/                 # ~/.rossoctl/config.yaml context persistence
 ├── Makefile
 └── go.mod
 ```
@@ -54,10 +56,16 @@ rossoctl --help
 rossoctl version
 rossoctl agents --help
 
+# Manage contexts (persisted in ~/.rossoctl/config.yaml, kubectl-style)
+rossoctl config get-contexts                    # created + seeded on first use
+rossoctl config create-context --name dev \
+    --server http://my-host:8080/api/v1/ --bearer-token <token>   # becomes current
+rossoctl config use-context dev
+
 # Show the server's auth configuration (GET <server>/auth/config)
-rossoctl config
-rossoctl config --json
-rossoctl --server http://my-host:8080/api/v1/ config
+rossoctl auth-config
+rossoctl auth-config --json
+rossoctl --server http://my-host:8080/api/v1/ auth-config
 
 # List agents (GET <server>/agents, one request per namespace)
 rossoctl agents list                            # discovers namespaces via GET /namespaces, lists agents in each
@@ -78,14 +86,24 @@ rossoctl namespaces list --json
 rossoctl -v agents list
 ```
 
-The global `--server` flag sets the API root (default
-`http://kagenti-ui.localtest.me:8080/api/v1/`) and must appear before the
-subcommand. The global `--verbose`/`-v` flag logs each REST request (method,
+### Contexts and server resolution
+
+Contexts are persisted in `~/.rossoctl/config.yaml` (directory `0700`, file
+`0600`). Each context has a name, a server URI, and an optional bearer token.
+The file is created lazily — the first command that needs it seeds a context
+from the default server (`http://kagenti-ui.localtest.me:8080/api/v1/`) and
+makes it current. Creating a context makes it current.
+
+The server a command talks to is resolved as: an explicit `--server` flag wins
+(and no bearer token is sent); otherwise the current context supplies both the
+server URI and its bearer token. The global `--server` and `--verbose`/`-v`
+flags must appear before the subcommand; `-v` logs each REST request (method,
 URL, status, timing) to stderr.
 
 The command tree mirrors the subcommands referenced in the Rossoctl docs
 (`agents`, `config`, `gateway`, `images`, `namespaces`, `skills`, `tools`, `ui`,
-plus the top-level `apply`, `install`, `login`, `status`, `uninstall`). The
-`config`, `agents list`, `tools list`, and `namespaces list` commands are
-implemented; other leaf commands currently print `UNIMPLEMENTED` as a
-placeholder.
+plus `auth-config` and the top-level `apply`, `install`, `login`, `status`,
+`uninstall`). The
+`config` context commands, `auth-config`, `agents list`, `tools list`, and
+`namespaces list` are implemented; other leaf commands currently print
+`UNIMPLEMENTED` as a placeholder.

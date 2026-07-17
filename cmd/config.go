@@ -3,83 +3,150 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
-	"github.com/kagenti/rossoctl-cli/internal/apiclient"
+	"github.com/kagenti/rossoctl-cli/internal/config"
 )
 
-var configJSON bool
+// loadConfig returns the context config, creating and seeding it from the
+// effective default server if it does not yet exist. This is the lazy
+// create-if-missing behavior: the file is only touched when a context command
+// needs to inspect it.
+func loadConfig() (*config.Config, error) {
+	path, err := config.DefaultPath()
+	if err != nil {
+		return nil, err
+	}
+	return config.EnsureContext(path, serverOrDefault())
+}
 
-var configCmd = &cobra.Command{
-	Use:   "config",
-	Short: "Show the server's authentication configuration",
-	Long: `Fetch and display the authentication configuration reported by the
-server (GET <server>/auth/config).
+// --- get-contexts ---
 
-By default the values are printed in a human-readable format. With --json the
-raw JSON returned by the server is printed unchanged.`,
+var configGetContextsJSON bool
+
+var configGetContextsCmd = &cobra.Command{
+	Use:   "get-contexts",
+	Short: "List configured contexts",
+	Long: `List the contexts persisted in ~/.rossoctl/config.yaml.
+
+If the config file does not exist yet it is created, seeded with a context for
+the default server. With --json the raw config is printed unchanged.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		client := newClient(cmd)
-		cfg, err := client.GetAuthConfig(cmd.Context())
+		cfg, err := loadConfig()
 		if err != nil {
 			return err
 		}
 
-		if configJSON {
-			return printConfigJSON(cmd, cfg)
+		if configGetContextsJSON {
+			enc := json.NewEncoder(cmd.OutOrStdout())
+			enc.SetIndent("", "  ")
+			return enc.Encode(cfg)
 		}
-		printConfigHuman(cmd, cfg)
+
+		out := cmd.OutOrStdout()
+		w := tabwriter.NewWriter(out, 0, 0, 3, ' ', 0)
+		fmt.Fprintln(w, "CURRENT\tNAME\tSERVER\tTOKEN")
+		for _, c := range cfg.Contexts {
+			marker := ""
+			if c.Name == cfg.CurrentContext {
+				marker = "*"
+			}
+			token := "<none>"
+			if c.BearerToken != "" {
+				token = "<set>"
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", marker, c.Name, c.Server, token)
+		}
+		return w.Flush()
+	},
+}
+
+// --- use-context ---
+
+var configUseContextCmd = &cobra.Command{
+	Use:   "use-context <name>",
+	Short: "Set the current context",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		name := args[0]
+		cfg, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		if err := cfg.SetCurrent(name); err != nil {
+			return err
+		}
+		if err := cfg.Save(); err != nil {
+			return err
+		}
+		cmd.Printf("Switched to context %q.\n", name)
 		return nil
 	},
 }
 
-func printConfigJSON(cmd *cobra.Command, cfg *apiclient.AuthConfig) error {
-	enc := json.NewEncoder(cmd.OutOrStdout())
-	enc.SetIndent("", "  ")
-	return enc.Encode(cfg)
-}
+// --- create-context ---
 
-func printConfigHuman(cmd *cobra.Command, cfg *apiclient.AuthConfig) {
-	out := cmd.OutOrStdout()
+var (
+	createContextName   string
+	createContextServer string
+	createContextToken  string
+)
 
-	if !cfg.Enabled {
-		fmt.Fprintln(out, "Authentication: disabled")
-		return
-	}
+var configCreateContextCmd = &cobra.Command{
+	Use:   "create-context",
+	Short: "Create a context and make it current",
+	Long: `Create (or replace) a named context and make it the current context.
 
-	fmt.Fprintln(out, "Authentication: enabled")
-
-	rows := []struct {
-		label string
-		value *string
-	}{
-		{"Keycloak URL", cfg.KeycloakURL},
-		{"Realm", cfg.Realm},
-		{"Client ID", cfg.ClientID},
-		{"Redirect URI", cfg.RedirectURI},
-	}
-
-	// Align the labels for readability.
-	width := 0
-	for _, r := range rows {
-		if len(r.label) > width {
-			width = len(r.label)
+--server sets the context's server URI; if omitted, the global --server value
+is used, falling back to the built-in default. --bearer-token is optional.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		if createContextName == "" {
+			return fmt.Errorf("--name is required")
 		}
-	}
 
-	for _, r := range rows {
-		value := "(not set)"
-		if r.value != nil && strings.TrimSpace(*r.value) != "" {
-			value = *r.value
+		serverURI := createContextServer
+		if serverURI == "" {
+			serverURI = serverOrDefault()
 		}
-		fmt.Fprintf(out, "  %-*s  %s\n", width, r.label+":", value)
-	}
+
+		cfg, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		cfg.Upsert(config.Context{
+			Name:        createContextName,
+			Server:      serverURI,
+			BearerToken: createContextToken,
+		})
+		// Creating a context makes it the current one.
+		if err := cfg.SetCurrent(createContextName); err != nil {
+			return err
+		}
+		if err := cfg.Save(); err != nil {
+			return err
+		}
+		cmd.Printf("Created context %q and set it as current.\n", createContextName)
+		return nil
+	},
 }
 
 func init() {
-	configCmd.Flags().BoolVar(&configJSON, "json", false, "print the raw JSON response unchanged")
+	configCmd := newGroup("config", "Manage rossoctl contexts")
+
+	configGetContextsCmd.Flags().BoolVar(&configGetContextsJSON, "json", false, "print the raw config as JSON")
+
+	configCreateContextCmd.Flags().StringVar(&createContextName, "name", "", "name of the context (required)")
+	configCreateContextCmd.Flags().StringVar(&createContextServer, "server", "", "server URI for the context (default: global --server or built-in default)")
+	configCreateContextCmd.Flags().StringVar(&createContextToken, "bearer-token", "", "optional bearer token for the context")
+
+	configCmd.AddCommand(
+		configGetContextsCmd,
+		configUseContextCmd,
+		configCreateContextCmd,
+	)
 	rootCmd.AddCommand(configCmd)
 }

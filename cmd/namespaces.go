@@ -23,7 +23,10 @@ namespace. With --json the raw JSON returned by the server is printed
 unchanged, otherwise the namespaces are printed as a human-readable table.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		client := newClient(cmd)
+		client, err := newClient(cmd)
+		if err != nil {
+			return err
+		}
 		resp, err := client.ListNamespaces(cmd.Context(), !namespacesListAll)
 		if err != nil {
 			return err
