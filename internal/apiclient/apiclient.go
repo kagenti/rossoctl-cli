@@ -94,19 +94,43 @@ func (c *Client) deleteJSON(ctx context.Context, path string, out any) error {
 	return c.doJSON(ctx, http.MethodDelete, path, out)
 }
 
-// doJSON issues a bodyless request with the given method, applies auth and
-// logging, checks the status, and decodes the JSON response into out.
+// postJSON performs a POST on the resolved path with body marshaled as JSON
+// and decodes the JSON response into out.
+func (c *Client) postJSON(ctx context.Context, path string, body, out any) error {
+	return c.requestJSON(ctx, http.MethodPost, path, body, out)
+}
+
+// doJSON issues a bodyless request with the given method.
 func (c *Client) doJSON(ctx context.Context, method, path string, out any) error {
+	return c.requestJSON(ctx, method, path, nil, out)
+}
+
+// requestJSON issues a request with the given method (and optional JSON body),
+// applies auth and logging, checks the status, and decodes the JSON response
+// into out.
+func (c *Client) requestJSON(ctx context.Context, method, path string, body, out any) error {
 	endpoint, err := c.resolve(path)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
+	var reqBody io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("encoding request body: %w", err)
+		}
+		reqBody = strings.NewReader(string(data))
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, reqBody)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if c.BearerToken != "" {
 		req.Header.Set("Authorization", "Bearer "+c.BearerToken)
 	}
@@ -244,6 +268,50 @@ func (c *Client) DeleteAgent(ctx context.Context, namespace, name string) (*Dele
 
 	var resp DeleteResponse
 	if err := c.deleteJSON(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// EnvVar is one environment variable in a CreateAgentRequest.
+type EnvVar struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// CreateAgentRequest is the subset of the backend's CreateAgentRequest that
+// the CLI populates. Fields the server defaults are omitted; only what we set
+// is sent. deploymentMethod selects image vs source; workloadType selects
+// deployment|statefulset|job|sandbox.
+type CreateAgentRequest struct {
+	Name             string   `json:"name"`
+	Namespace        string   `json:"namespace"`
+	DeploymentMethod string   `json:"deploymentMethod"`
+	WorkloadType     string   `json:"workloadType"`
+	EnvVars          []EnvVar `json:"envVars,omitempty"`
+
+	// Image deployment fields.
+	ContainerImage  string `json:"containerImage,omitempty"`
+	ImagePullSecret string `json:"imagePullSecret,omitempty"`
+
+	// Source build fields.
+	GitURL    string `json:"gitUrl,omitempty"`
+	GitPath   string `json:"gitPath,omitempty"`
+	GitBranch string `json:"gitBranch,omitempty"`
+}
+
+// CreateAgentResponse mirrors the backend's CreateAgentResponse model.
+type CreateAgentResponse struct {
+	Success   bool   `json:"success"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Message   string `json:"message"`
+}
+
+// CreateAgent issues POST /agents with the given request body.
+func (c *Client) CreateAgent(ctx context.Context, req *CreateAgentRequest) (*CreateAgentResponse, error) {
+	var resp CreateAgentResponse
+	if err := c.postJSON(ctx, "agents", req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

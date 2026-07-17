@@ -2,6 +2,7 @@ package apiclient
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -207,6 +208,82 @@ func TestDeleteAgent(t *testing.T) {
 	}
 	if !resp.Success || resp.Message != "deleted" {
 		t.Errorf("unexpected response: %+v", resp)
+	}
+}
+
+func TestCreateAgent(t *testing.T) {
+	var gotMethod, gotPath, gotContentType string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotContentType = r.Header.Get("Content-Type")
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = w.Write([]byte(`{"success": true, "name": "orders", "namespace": "team1", "message": "Agent created"}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/"}
+	req := &CreateAgentRequest{
+		Name:             "orders",
+		Namespace:        "team1",
+		DeploymentMethod: "image",
+		WorkloadType:     "deployment",
+		ContainerImage:   "ghcr.io/x/y:latest",
+		ImagePullSecret:  "regcred",
+		EnvVars:          []EnvVar{{Name: "FOO", Value: "bar"}},
+	}
+	resp, err := c.CreateAgent(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %q, want POST", gotMethod)
+	}
+	if gotPath != "/api/v1/agents" {
+		t.Errorf("path = %q, want /api/v1/agents", gotPath)
+	}
+	if gotContentType != "application/json" {
+		t.Errorf("content-type = %q, want application/json", gotContentType)
+	}
+	if gotBody["deploymentMethod"] != "image" || gotBody["containerImage"] != "ghcr.io/x/y:latest" {
+		t.Errorf("unexpected body: %+v", gotBody)
+	}
+	envVars, ok := gotBody["envVars"].([]any)
+	if !ok || len(envVars) != 1 {
+		t.Fatalf("envVars not sent correctly: %+v", gotBody["envVars"])
+	}
+	ev := envVars[0].(map[string]any)
+	if ev["name"] != "FOO" || ev["value"] != "bar" {
+		t.Errorf("envVar = %+v, want {FOO:bar}", ev)
+	}
+	if !resp.Success || resp.Message != "Agent created" {
+		t.Errorf("unexpected response: %+v", resp)
+	}
+}
+
+func TestCreateAgentOmitsEmptyOptionals(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = w.Write([]byte(`{"success": true}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/"}
+	_, err := c.CreateAgent(context.Background(), &CreateAgentRequest{
+		Name: "a", Namespace: "team1", DeploymentMethod: "image", WorkloadType: "deployment",
+		ContainerImage: "img",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Empty optionals must be omitted (omitempty) so they don't override server defaults.
+	for _, k := range []string{"imagePullSecret", "gitUrl", "gitPath", "gitBranch", "envVars"} {
+		if _, present := gotBody[k]; present {
+			t.Errorf("empty field %q should be omitted, body: %+v", k, gotBody)
+		}
 	}
 }
 
