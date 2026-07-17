@@ -185,6 +185,31 @@ func TestGetAgent(t *testing.T) {
 	}
 }
 
+func TestDeleteAgent(t *testing.T) {
+	var gotMethod, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"success": true, "message": "deleted"}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/"}
+	resp, err := c.DeleteAgent(context.Background(), "team1", "orders")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method = %q, want DELETE", gotMethod)
+	}
+	if gotPath != "/api/v1/agents/team1/orders" {
+		t.Errorf("path = %q, want /api/v1/agents/team1/orders", gotPath)
+	}
+	if !resp.Success || resp.Message != "deleted" {
+		t.Errorf("unexpected response: %+v", resp)
+	}
+}
+
 func TestListNamespaces(t *testing.T) {
 	tests := []struct {
 		name        string

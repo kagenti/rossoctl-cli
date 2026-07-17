@@ -85,12 +85,24 @@ func (c *Client) resolve(ref string) (string, error) {
 // getJSON performs a GET on the resolved path and decodes the JSON body
 // into out.
 func (c *Client) getJSON(ctx context.Context, path string, out any) error {
+	return c.doJSON(ctx, http.MethodGet, path, out)
+}
+
+// deleteJSON performs a DELETE on the resolved path and decodes the JSON body
+// into out.
+func (c *Client) deleteJSON(ctx context.Context, path string, out any) error {
+	return c.doJSON(ctx, http.MethodDelete, path, out)
+}
+
+// doJSON issues a bodyless request with the given method, applies auth and
+// logging, checks the status, and decodes the JSON response into out.
+func (c *Client) doJSON(ctx context.Context, method, path string, out any) error {
 	endpoint, err := c.resolve(path)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
 	if err != nil {
 		return err
 	}
@@ -99,15 +111,15 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 		req.Header.Set("Authorization", "Bearer "+c.BearerToken)
 	}
 
-	c.logf("GET %s", endpoint)
+	c.logf("%s %s", method, endpoint)
 	start := time.Now()
 	resp, err := c.httpClient().Do(req)
 	if err != nil {
-		c.logf("GET %s failed after %s: %v", endpoint, time.Since(start).Round(time.Millisecond), err)
+		c.logf("%s %s failed after %s: %v", method, endpoint, time.Since(start).Round(time.Millisecond), err)
 		return fmt.Errorf("requesting %s: %w", endpoint, err)
 	}
 	defer resp.Body.Close()
-	c.logf("GET %s -> %s (%s)", endpoint, resp.Status, time.Since(start).Round(time.Millisecond))
+	c.logf("%s %s -> %s (%s)", method, endpoint, resp.Status, time.Since(start).Round(time.Millisecond))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -218,6 +230,23 @@ func (c *Client) GetAgent(ctx context.Context, namespace, name string) (*AgentDe
 		return nil, err
 	}
 	return &detail, nil
+}
+
+// DeleteResponse mirrors the backend's DeleteResponse model.
+type DeleteResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+// DeleteAgent issues DELETE /agents/<namespace>/<name>.
+func (c *Client) DeleteAgent(ctx context.Context, namespace, name string) (*DeleteResponse, error) {
+	path := "agents/" + url.PathEscape(namespace) + "/" + url.PathEscape(name)
+
+	var resp DeleteResponse
+	if err := c.deleteJSON(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 // ToolSummary mirrors the backend's ToolSummary model (one entry in the

@@ -82,6 +82,9 @@ rossoctl agents list --namespaces team1,team2 --json   # each response, separate
 rossoctl agents get orders                      # single-column text, laid out like the web detail page
 rossoctl agents get orders --json               # raw JSON
 
+# Delete an agent (DELETE <server>/agents/<namespace>/<name>)
+rossoctl agents delete orders
+
 # `agents --namespace` overrides the current context's namespace for any agents subcommand
 rossoctl agents --namespace team2 get orders    # -> GET /agents/team2/orders
 rossoctl agents --namespace team2 list          # list just team2 (no discovery)
@@ -128,6 +131,7 @@ The command tree mirrors the subcommands referenced in the Rossoctl docs
 (`agents`, `config`, `gateway`, `images`, `namespaces`, `skills`, `tools`, `ui`,
 plus `auth-config` and the top-level `apply`, `install`, `login`, `status`,
 `uninstall`). The
-`config` context commands, `login`, `auth-config`, `agents list`, `tools list`,
-and `namespaces list` are implemented; other leaf commands currently print
-`UNIMPLEMENTED` as a placeholder.
+`config` context commands, `login`, `auth-config`, `agents list`,
+`agents get`, `agents delete`, `tools list`, and `namespaces list` are
+implemented; other leaf commands currently print `UNIMPLEMENTED` as a
+placeholder.

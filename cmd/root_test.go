@@ -127,7 +127,8 @@ var unimplementedCommands = [][]string{
 	{"agents", "add-skill"},
 	{"agents", "chat"},
 	{"agents", "connect"},
-	{"agents", "delete"},
+	// "agents delete" is implemented (DELETE /agents/<ns>/<name>); tested in
+	// agents_delete_test.go.
 	// "agents import" has its own from-image/from-source subcommands (tested
 	// in agents_import_test.go).
 	{"agents", "describe"},

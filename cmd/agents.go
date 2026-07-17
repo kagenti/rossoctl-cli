@@ -172,7 +172,7 @@ func init() {
 		newLeaf("add-skill [name]", "Add a skill to an agent"),
 		newLeaf("chat [name]", "Start an interactive chat with an agent"),
 		newLeaf("connect [name]", "Connect an agent to a tool"),
-		newLeaf("delete [name]", "Delete an agent"),
+		agentsDeleteCmd,
 		newAgentsImportCmd(),
 		newLeaf("describe [name]", "Show detailed information about an agent"),
 		agentsGetCmd,
