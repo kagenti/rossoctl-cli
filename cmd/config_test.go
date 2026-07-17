@@ -38,6 +38,10 @@ func TestConfigGetContextsAutoCreates(t *testing.T) {
 			t.Errorf("get-contexts output missing %q:\n%s", want, out)
 		}
 	}
+	// The seeded context is named after the server's hostname.
+	if !strings.Contains(out, "kagenti-ui.localtest.me") {
+		t.Errorf("get-contexts output missing hostname context name:\n%s", out)
+	}
 }
 
 func TestConfigCreateAndUseContext(t *testing.T) {

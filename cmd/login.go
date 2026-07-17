@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kagenti/rossoctl-cli/internal/config"
 	"github.com/kagenti/rossoctl-cli/internal/deviceflow"
 )
 
@@ -15,9 +16,13 @@ var loginToken string
 
 var loginCmd = &cobra.Command{
 	Use:   "login",
-	Short: "Log in and store a bearer token on the current context",
-	Long: `Obtain a bearer token and store it on the current context in
-~/.rossoctl/config.yaml (created and seeded from the default server if absent).
+	Short: "Log in and store a bearer token on a context",
+	Long: `Obtain a bearer token and store it on a context in ~/.rossoctl/config.yaml.
+
+With --server, the token is stored on the context named after that server's
+hostname, creating it if none exists, and that context becomes current.
+Without --server, the token is stored on the current context (a context is
+created from the default server if the config is empty).
 
 With --token, the given token is stored directly. Without --token, an OAuth 2.0
 device authorization flow is run against the server's Keycloak: rossoctl reads
@@ -30,10 +35,32 @@ until you authorize.`,
 		if err != nil {
 			return err
 		}
-		cur, ok := cfg.Current()
-		if !ok {
-			// loadConfig seeds a current context, so this should not happen.
-			return fmt.Errorf("no current context to log in to")
+
+		// Determine which context to log into:
+		//   - With an explicit --server, target the context named after that
+		//     server's hostname, creating it if none exists, and make it
+		//     current.
+		//   - Without --server, log into the current context (loadConfig has
+		//     already seeded one if the config was empty).
+		var target *config.Context
+		if cmd.Flags().Changed("server") {
+			name := config.ContextNameForServer(server)
+			if existing, ok := cfg.Get(name); ok {
+				target = existing
+			} else {
+				cfg.Upsert(config.Context{Name: name, Server: server})
+				target, _ = cfg.Get(name)
+			}
+			if err := cfg.SetCurrent(name); err != nil {
+				return err
+			}
+		} else {
+			cur, ok := cfg.Current()
+			if !ok {
+				// loadConfig seeds a current context, so this should not happen.
+				return fmt.Errorf("no current context to log in to")
+			}
+			target = cur
 		}
 
 		token := loginToken
@@ -44,12 +71,12 @@ until you authorize.`,
 			}
 		}
 
-		cur.BearerToken = token
+		target.BearerToken = token
 		if err := cfg.Save(); err != nil {
 			return err
 		}
 
-		cmd.Printf("Logged in; token set on context %q.\n", cur.Name)
+		cmd.Printf("Logged in; token set on context %q.\n", target.Name)
 		return nil
 	},
 }

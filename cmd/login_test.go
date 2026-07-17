@@ -160,7 +160,125 @@ func TestLoginSeedsContextWhenMissing(t *testing.T) {
 	if cur.Server != defaultServer {
 		t.Errorf("seeded server = %q, want %q", cur.Server, defaultServer)
 	}
+	// The seeded context is named after the server's hostname, not the URI.
+	if cur.Name != "kagenti-ui.localtest.me" {
+		t.Errorf("seeded context name = %q, want the hostname kagenti-ui.localtest.me", cur.Name)
+	}
 	if cur.BearerToken != "tok" {
 		t.Errorf("token = %q, want tok", cur.BearerToken)
+	}
+}
+
+func TestLoginServerCreatesHostnameContext(t *testing.T) {
+	path := isolateHome(t)
+
+	// A pre-existing current context, unrelated to the --server host.
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", "http://dev/api/v1/", "--namespace", "team1"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+
+	// login --server for a NEW host must create a context named after that
+	// host, set the token there, and make it current.
+	if _, err := execute(t, "login", "--server", "http://newhost:8080/api/v1/", "--token", "tok"); err != nil {
+		t.Fatalf("login --server: %v", err)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	ctx, ok := cfg.Get("newhost")
+	if !ok {
+		t.Fatal("expected a context named after the server hostname 'newhost'")
+	}
+	if ctx.Server != "http://newhost:8080/api/v1/" {
+		t.Errorf("server = %q, want the full URI", ctx.Server)
+	}
+	if ctx.BearerToken != "tok" {
+		t.Errorf("token = %q, want tok", ctx.BearerToken)
+	}
+	if cfg.CurrentContext != "newhost" {
+		t.Errorf("current context = %q, want newhost", cfg.CurrentContext)
+	}
+	// The pre-existing dev context must be untouched.
+	if dev, ok := cfg.Get("dev"); !ok || dev.BearerToken != "" {
+		t.Errorf("dev context should be unchanged, got %+v (ok=%v)", dev, ok)
+	}
+}
+
+func TestLoginServerReusesExistingHostnameContext(t *testing.T) {
+	path := isolateHome(t)
+
+	// A context already exists for the host (its name IS the hostname).
+	if _, err := execute(t, "config", "create-context",
+		"--name", "newhost", "--server", "http://newhost:8080/api/v1/", "--namespace", "team1"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+	// Switch away so it isn't current.
+	if _, err := execute(t, "config", "create-context",
+		"--name", "other", "--server", "http://other/api/v1/"); err != nil {
+		t.Fatalf("create-context other: %v", err)
+	}
+
+	if _, err := execute(t, "login", "--server", "http://newhost:8080/api/v1/", "--token", "tok"); err != nil {
+		t.Fatalf("login --server: %v", err)
+	}
+
+	cfg, _ := config.Load(path)
+	// No duplicate context was created.
+	count := 0
+	for _, c := range cfg.Contexts {
+		if c.Name == "newhost" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly one 'newhost' context, got %d", count)
+	}
+	// The existing context got the token, kept its namespace, and is current.
+	ctx, _ := cfg.Get("newhost")
+	if ctx.BearerToken != "tok" {
+		t.Errorf("token = %q, want tok", ctx.BearerToken)
+	}
+	if ctx.Namespace != "team1" {
+		t.Errorf("namespace = %q, want team1 (preserved)", ctx.Namespace)
+	}
+	if cfg.CurrentContext != "newhost" {
+		t.Errorf("current context = %q, want newhost", cfg.CurrentContext)
+	}
+}
+
+func TestLoginNoServerUsesCurrentContext(t *testing.T) {
+	path := isolateHome(t)
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "a", "--server", "http://a/api/v1/"); err != nil {
+		t.Fatalf("create-context a: %v", err)
+	}
+	// b is current.
+	if _, err := execute(t, "config", "create-context",
+		"--name", "b", "--server", "http://b/api/v1/"); err != nil {
+		t.Fatalf("create-context b: %v", err)
+	}
+
+	before, _ := config.Load(path)
+	countBefore := len(before.Contexts)
+
+	// No --server: token goes on the current context (b), no new context.
+	if _, err := execute(t, "login", "--token", "tok"); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+
+	cfg, _ := config.Load(path)
+	if len(cfg.Contexts) != countBefore {
+		t.Errorf("login without --server should not add a context: had %d, now %d", countBefore, len(cfg.Contexts))
+	}
+	b, _ := cfg.Get("b")
+	if b.BearerToken != "tok" {
+		t.Errorf("current context b token = %q, want tok", b.BearerToken)
+	}
+	if a, _ := cfg.Get("a"); a.BearerToken != "" {
+		t.Errorf("non-current context a should be untouched, got token %q", a.BearerToken)
 	}
 }
