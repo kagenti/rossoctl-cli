@@ -228,6 +228,61 @@ func TestConfigSetContextRequiresNamespace(t *testing.T) {
 	}
 }
 
+func TestConfigSetContextReplacesServer(t *testing.T) {
+	path := isolateHome(t)
+	oldSrv := namespacesServer(t, "team1")
+	newSrv := namespacesServer(t, "team1", "team2")
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", oldSrv.URL+"/api/v1/"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+
+	// Explicit --server must replace the context's server.
+	newServerURL := newSrv.URL + "/api/v1/"
+	out, err := execute(t, "config", "set-context", "--namespace", "team2", "--server", newServerURL)
+	if err != nil {
+		t.Fatalf("set-context: %v", err)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	cur, _ := cfg.Current()
+	if cur.Server != newServerURL {
+		t.Errorf("server = %q, want %q", cur.Server, newServerURL)
+	}
+	if cur.Namespace != "team2" {
+		t.Errorf("namespace = %q, want team2", cur.Namespace)
+	}
+	if !strings.Contains(out, "server") {
+		t.Errorf("output should mention the new server:\n%s", out)
+	}
+}
+
+func TestConfigSetContextKeepsServerWhenNotGiven(t *testing.T) {
+	path := isolateHome(t)
+	srv := namespacesServer(t, "team1")
+	origServer := srv.URL + "/api/v1/"
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", origServer); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+
+	// No --server: the context's server must be left unchanged.
+	if _, err := execute(t, "config", "set-context", "--namespace", "team1"); err != nil {
+		t.Fatalf("set-context: %v", err)
+	}
+
+	cfg, _ := config.Load(path)
+	cur, _ := cfg.Current()
+	if cur.Server != origServer {
+		t.Errorf("server changed to %q, want unchanged %q", cur.Server, origServer)
+	}
+}
+
 // TestCurrentContextDrivesServer verifies that when --server is not given, the
 // current context's server (and bearer token) are used, and that an explicit
 // --server overrides the context (and drops the token).

@@ -170,6 +170,8 @@ the namespace is set regardless.`,
 		}
 
 		// Warn (but don't fail) if the namespace is not one the server knows.
+		// serverKnowsNamespace resolves the server the same way other commands
+		// do, so an explicit --server (below) is used for this check too.
 		if known, err := serverKnowsNamespace(cmd, setContextNamespace); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(),
 				"Warning: could not verify namespace against the server: %v\n", err)
@@ -179,10 +181,21 @@ the namespace is set regardless.`,
 		}
 
 		cur.Namespace = setContextNamespace
+		// Replace the context's server only when --server was given explicitly
+		// (not left at its default).
+		if cmd.Flags().Changed("server") {
+			cur.Server = server
+		}
+
 		if err := cfg.Save(); err != nil {
 			return err
 		}
-		cmd.Printf("Set namespace %q on context %q.\n", setContextNamespace, cur.Name)
+		if cmd.Flags().Changed("server") {
+			cmd.Printf("Set namespace %q and server %q on context %q.\n",
+				setContextNamespace, cur.Server, cur.Name)
+		} else {
+			cmd.Printf("Set namespace %q on context %q.\n", setContextNamespace, cur.Name)
+		}
 		return nil
 	},
 }
