@@ -11,6 +11,9 @@ package deviceflow
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,6 +42,10 @@ type Client struct {
 	// Sleep waits for d before the next poll. If nil, time.Sleep is used.
 	// Tests inject a no-op (or a recorder) to avoid real delays.
 	Sleep func(d time.Duration)
+
+	// NewVerifier returns a fresh PKCE code_verifier. If nil, a random one is
+	// generated. Tests inject a fixed value for deterministic assertions.
+	NewVerifier func() (string, error)
 }
 
 // DeviceAuth is the response from the device authorization endpoint.
@@ -49,6 +56,10 @@ type DeviceAuth struct {
 	VerificationURIComplete string `json:"verification_uri_complete"`
 	ExpiresIn               int    `json:"expires_in"`
 	Interval                int    `json:"interval"`
+
+	// codeVerifier is the PKCE verifier generated for this authorization; it
+	// is sent with the token request. Not part of the wire response.
+	codeVerifier string `json:"-"`
 }
 
 // tokenResponse is the (success or error) response from the token endpoint.
@@ -69,6 +80,30 @@ func (c *Client) httpClient() *http.Client {
 		return c.HTTPClient
 	}
 	return &http.Client{Timeout: 30 * time.Second}
+}
+
+// generateVerifier returns a high-entropy PKCE code_verifier: 32 random bytes
+// base64url-encoded (no padding), yielding 43 chars within the RFC 7636 range.
+func generateVerifier() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generating PKCE verifier: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// challengeS256 derives the PKCE code_challenge for the S256 method:
+// base64url(SHA256(verifier)) with no padding.
+func challengeS256(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func (c *Client) newVerifier() (string, error) {
+	if c.NewVerifier != nil {
+		return c.NewVerifier()
+	}
+	return generateVerifier()
 }
 
 func (c *Client) sleep(d time.Duration) {
@@ -93,13 +128,14 @@ func (c *Client) endpoint(name string) (string, error) {
 }
 
 // postForm POSTs form as application/x-www-form-urlencoded and decodes the
-// JSON body into out. It returns the HTTP status code so callers can
-// distinguish pending/slow-down (400) from other failures.
-func (c *Client) postForm(ctx context.Context, endpoint string, form url.Values, out any) (int, error) {
+// JSON body into out. It returns the HTTP status code and the raw response
+// body so callers can distinguish pending/slow-down (400) from other failures
+// and surface the server's error details.
+func (c *Client) postForm(ctx context.Context, endpoint string, form url.Values, out any) (int, []byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint,
 		strings.NewReader(form.Encode()))
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
@@ -107,21 +143,43 @@ func (c *Client) postForm(ctx context.Context, endpoint string, form url.Values,
 	c.logf("POST %s", endpoint)
 	resp, err := c.httpClient().Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("requesting %s: %w", endpoint, err)
+		return 0, nil, fmt.Errorf("requesting %s: %w", endpoint, err)
 	}
 	defer resp.Body.Close()
 	c.logf("POST %s -> %s", endpoint, resp.Status)
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return resp.StatusCode, fmt.Errorf("reading response from %s: %w", endpoint, err)
+		return resp.StatusCode, nil, fmt.Errorf("reading response from %s: %w", endpoint, err)
 	}
 	if len(body) > 0 {
-		if err := json.Unmarshal(body, out); err != nil {
-			return resp.StatusCode, fmt.Errorf("decoding response from %s: %w", endpoint, err)
+		if uerr := json.Unmarshal(body, out); uerr != nil {
+			// A body that isn't valid JSON is only a hard error on success;
+			// on a failure status the caller inspects the raw body (and status)
+			// to build a useful message, so don't mask it with a decode error.
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				return resp.StatusCode, body, fmt.Errorf("decoding response from %s: %w", endpoint, uerr)
+			}
 		}
 	}
-	return resp.StatusCode, nil
+	return resp.StatusCode, body, nil
+}
+
+// oauthError extracts a human-readable message from an OAuth-style error
+// response body (error / error_description fields), falling back to the raw
+// body text when it is not the expected shape.
+func oauthError(body []byte) string {
+	var e struct {
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
+	}
+	if len(body) > 0 && json.Unmarshal(body, &e) == nil && e.Error != "" {
+		if e.ErrorDescription != "" {
+			return fmt.Sprintf("%s: %s", e.Error, e.ErrorDescription)
+		}
+		return e.Error
+	}
+	return strings.TrimSpace(string(body))
 }
 
 // RequestDeviceCode calls the device authorization endpoint and returns the
@@ -132,16 +190,31 @@ func (c *Client) RequestDeviceCode(ctx context.Context) (*DeviceAuth, error) {
 		return nil, err
 	}
 
+	// PKCE (RFC 7636): send a code_challenge now and the matching
+	// code_verifier when polling for the token. Required by Keycloak clients
+	// with PKCE enforced.
+	verifier, err := c.newVerifier()
+	if err != nil {
+		return nil, err
+	}
+
 	form := url.Values{}
 	form.Set("client_id", c.ClientID)
+	form.Set("code_challenge", challengeS256(verifier))
+	form.Set("code_challenge_method", "S256")
 
 	var da DeviceAuth
-	status, err := c.postForm(ctx, endpoint, form, &da)
+	status, body, err := c.postForm(ctx, endpoint, form, &da)
 	if err != nil {
 		return nil, err
 	}
 	if status < 200 || status >= 300 {
-		return nil, fmt.Errorf("device authorization request failed: HTTP %d", status)
+		if detail := oauthError(body); detail != "" {
+			return nil, fmt.Errorf("device authorization request to %s failed: HTTP %d: %s",
+				endpoint, status, detail)
+		}
+		return nil, fmt.Errorf("device authorization request to %s failed: HTTP %d (no response body)",
+			endpoint, status)
 	}
 	if da.DeviceCode == "" {
 		return nil, fmt.Errorf("device authorization response had no device_code")
@@ -150,6 +223,7 @@ func (c *Client) RequestDeviceCode(ctx context.Context) (*DeviceAuth, error) {
 	if da.Interval <= 0 {
 		da.Interval = 5
 	}
+	da.codeVerifier = verifier
 	return &da, nil
 }
 
@@ -176,9 +250,12 @@ func (c *Client) PollToken(ctx context.Context, da *DeviceAuth) (string, error) 
 		form.Set("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
 		form.Set("device_code", da.DeviceCode)
 		form.Set("client_id", c.ClientID)
+		if da.codeVerifier != "" {
+			form.Set("code_verifier", da.codeVerifier)
+		}
 
 		var tr tokenResponse
-		status, err := c.postForm(ctx, endpoint, form, &tr)
+		status, _, err := c.postForm(ctx, endpoint, form, &tr)
 		if err != nil {
 			return "", err
 		}

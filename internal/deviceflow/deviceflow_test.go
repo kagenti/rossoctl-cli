@@ -4,19 +4,25 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 )
 
-// newClient returns a Client pointed at srv with a no-op Sleep so polling
-// tests run instantly.
+// testVerifier is a fixed PKCE code_verifier injected into test clients so the
+// derived code_challenge is deterministic.
+const testVerifier = "test-code-verifier-0123456789abcdef"
+
+// newClient returns a Client pointed at srv with a no-op Sleep and a fixed
+// PKCE verifier so polling tests run instantly and deterministically.
 func newClient(srv *httptest.Server) *Client {
 	return &Client{
 		KeycloakURL: srv.URL,
 		Realm:       "rossoctl",
 		ClientID:    "rossoctl-ui",
 		Sleep:       func(time.Duration) {},
+		NewVerifier: func() (string, error) { return testVerifier, nil },
 	}
 }
 
@@ -70,6 +76,75 @@ func TestRequestDeviceCodeDefaultsInterval(t *testing.T) {
 	}
 	if da.Interval != 5 {
 		t.Errorf("interval = %d, want default 5", da.Interval)
+	}
+}
+
+func TestPKCERoundTrip(t *testing.T) {
+	var deviceForm, tokenForm url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/device"):
+			deviceForm = r.Form
+			_, _ = w.Write([]byte(`{"device_code":"DEV","user_code":"U","verification_uri":"http://v","interval":1}`))
+		case strings.HasSuffix(r.URL.Path, "/token"):
+			tokenForm = r.Form
+			_, _ = w.Write([]byte(`{"access_token":"T"}`))
+		}
+	}))
+	defer srv.Close()
+
+	c := newClient(srv)
+	da, err := c.RequestDeviceCode(context.Background())
+	if err != nil {
+		t.Fatalf("RequestDeviceCode: %v", err)
+	}
+
+	// The device request must carry the S256 challenge derived from the
+	// verifier, and the method.
+	if got := deviceForm.Get("code_challenge_method"); got != "S256" {
+		t.Errorf("code_challenge_method = %q, want S256", got)
+	}
+	wantChallenge := challengeS256(testVerifier)
+	if got := deviceForm.Get("code_challenge"); got != wantChallenge {
+		t.Errorf("code_challenge = %q, want %q", got, wantChallenge)
+	}
+	if deviceForm.Get("code_verifier") != "" {
+		t.Error("code_verifier must not be sent in the device request")
+	}
+
+	if _, err := c.PollToken(context.Background(), da); err != nil {
+		t.Fatalf("PollToken: %v", err)
+	}
+	// The token request must carry the matching verifier.
+	if got := tokenForm.Get("code_verifier"); got != testVerifier {
+		t.Errorf("token code_verifier = %q, want %q", got, testVerifier)
+	}
+}
+
+func TestChallengeS256Known(t *testing.T) {
+	// RFC 7636 Appendix B test vector.
+	verifier := "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	want := "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+	if got := challengeS256(verifier); got != want {
+		t.Errorf("challengeS256 = %q, want %q (RFC 7636 vector)", got, want)
+	}
+}
+
+func TestGenerateVerifierUnique(t *testing.T) {
+	a, err := generateVerifier()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := generateVerifier()
+	if a == b {
+		t.Error("generateVerifier returned identical values")
+	}
+	if len(a) < 43 {
+		t.Errorf("verifier length = %d, want >= 43 (RFC 7636 minimum)", len(a))
 	}
 }
 
@@ -184,6 +259,43 @@ func TestPollTokenContextCancel(t *testing.T) {
 	_, err := c.PollToken(ctx, &DeviceAuth{DeviceCode: "D", Interval: 1})
 	if err == nil {
 		t.Error("expected error after context cancel")
+	}
+}
+
+func TestRequestDeviceCodeErrorIncludesDetail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid_client","error_description":"Invalid client or Invalid client credentials"}`))
+	}))
+	defer srv.Close()
+
+	_, err := newClient(srv).RequestDeviceCode(context.Background())
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"400", "invalid_client", "Invalid client credentials", "/auth/device"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error %q missing %q", msg, want)
+		}
+	}
+}
+
+func TestRequestDeviceCodeErrorNonJSONBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("Bad Request"))
+	}))
+	defer srv.Close()
+
+	_, err := newClient(srv).RequestDeviceCode(context.Background())
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	// The raw body text should be surfaced when it isn't OAuth-shaped JSON.
+	if !strings.Contains(err.Error(), "Bad Request") {
+		t.Errorf("error %q should include the raw body", err.Error())
 	}
 }
 
