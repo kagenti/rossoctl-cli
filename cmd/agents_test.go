@@ -57,7 +57,7 @@ func newAgentsServer(t *testing.T, body string) (*httptest.Server, *string) {
 func TestAgentsListTable(t *testing.T) {
 	srv, _ := newAgentsServer(t, agentsBody)
 
-	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "list")
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "--namespace", "default", "list")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestAgentsListTableTruncatesDescription(t *testing.T) {
 	srv, _ := newAgentsServer(t, `{"items":[{"name":"a","namespace":"team1","description":"`+long+
 		`","status":"Ready","labels":{"protocol":null,"framework":null,"type":"agent"},"workloadType":null,"createdAt":null}]}`)
 
-	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "list", "-n", "team1")
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "--namespace", "team1", "list")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestAgentsListTableTruncatesDescription(t *testing.T) {
 func TestAgentsListJSON(t *testing.T) {
 	srv, _ := newAgentsServer(t, agentsBody)
 
-	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "list", "--json")
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "--namespace", "default", "list", "--json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestAgentsListVerboseLogsToStderr(t *testing.T) {
 	srv, _ := newAgentsServer(t, `{"items": []}`)
 
 	stdout, stderr, err := executeSplit(t,
-		"--verbose", "--server", srv.URL+"/api/v1/", "agents", "list", "--json")
+		"--verbose", "--server", srv.URL+"/api/v1/", "agents", "--namespace", "default", "list", "--json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestAgentsListVerboseLogsToStderr(t *testing.T) {
 func TestAgentsListNoVerboseNoLog(t *testing.T) {
 	srv, _ := newAgentsServer(t, `{"items": []}`)
 
-	_, stderr, err := executeSplit(t, "--server", srv.URL+"/api/v1/", "agents", "list")
+	_, stderr, err := executeSplit(t, "--server", srv.URL+"/api/v1/", "agents", "--namespace", "default", "list")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -160,10 +160,11 @@ func TestAgentsListNoVerboseNoLog(t *testing.T) {
 	}
 }
 
-func TestAgentsListNamespacesFlag(t *testing.T) {
+func TestAgentsListSingleNamespaceFromFlag(t *testing.T) {
 	srv, gotQuery := newAgentsServer(t, `{"items": []}`)
 
-	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "list", "--namespaces", "team1")
+	// No --all-namespaces: the agents --namespace flag selects the one namespace.
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "--namespace", "team1", "list")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -172,6 +173,18 @@ func TestAgentsListNamespacesFlag(t *testing.T) {
 	}
 	if !strings.Contains(out, "No agents found") {
 		t.Errorf("empty list output = %q, want %q", out, "No agents found")
+	}
+}
+
+func TestAgentsListRequiresNamespaceWithoutAllFlag(t *testing.T) {
+	// No --all-namespaces and no --namespace/context namespace -> error.
+	isolateHome(t)
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", "http://x/api/v1/"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+	if _, err := execute(t, "agents", "list"); err == nil {
+		t.Error("agents list without --all-namespaces or a namespace should error")
 	}
 }
 
@@ -197,7 +210,7 @@ func newPerNamespaceAgentsServer(t *testing.T, byNamespace map[string]string) (*
 	return srv, &queried
 }
 
-func TestAgentsListDiscoversNamespacesWhenEmpty(t *testing.T) {
+func TestAgentsListAllNamespacesDiscovers(t *testing.T) {
 	var agentsQueried []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -219,8 +232,8 @@ func TestAgentsListDiscoversNamespacesWhenEmpty(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	// No --namespaces: the command must discover [alpha, beta] and query each.
-	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "list")
+	// --all-namespaces: discover [alpha, beta] and query each.
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "list", "--all-namespaces")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -235,7 +248,7 @@ func TestAgentsListDiscoversNamespacesWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestAgentsListDiscoversNoNamespaces(t *testing.T) {
+func TestAgentsListAllNamespacesNoNamespaces(t *testing.T) {
 	agentsCalled := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -251,7 +264,7 @@ func TestAgentsListDiscoversNoNamespaces(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "list")
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "list", "--all-namespaces")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -264,14 +277,13 @@ func TestAgentsListDiscoversNoNamespaces(t *testing.T) {
 	}
 }
 
-func TestAgentsListNamespaceFlagOverridesDiscovery(t *testing.T) {
-	// The per-namespace server errors if /namespaces is hit, so this also
-	// proves --namespace bypasses discovery.
+func TestAgentsListDefaultUsesSingleNamespaceNoDiscovery(t *testing.T) {
+	// The per-namespace server errors if /namespaces is hit, so this proves
+	// that without --all-namespaces the command does NOT discover.
 	srv, queried := newPerNamespaceAgentsServer(t, map[string]string{
 		"team1": `{"items":[{"name":"orders","namespace":"team1","description":"d","status":"Ready","labels":{"protocol":null,"framework":null,"type":"agent"},"workloadType":null,"createdAt":null}]}`,
 	})
 
-	// Group --namespace with no --namespaces: query exactly that one namespace.
 	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "--namespace", "team1", "list")
 	if err != nil {
 		t.Fatalf("agents list: %v", err)
@@ -284,33 +296,30 @@ func TestAgentsListNamespaceFlagOverridesDiscovery(t *testing.T) {
 	}
 }
 
-func TestAgentsListNamespacesFlagWinsOverGroupNamespace(t *testing.T) {
-	srv, queried := newPerNamespaceAgentsServer(t, map[string]string{})
+func TestAgentsListAllNamespacesCombinedTable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/namespaces":
+			_, _ = w.Write([]byte(`{"namespaces": ["team1", "team2"]}`))
+		case "/api/v1/agents":
+			switch r.URL.Query().Get("namespace") {
+			case "team1":
+				_, _ = w.Write([]byte(`{"items":[{"name":"orders","namespace":"team1","description":"d1","status":"Ready","labels":{"protocol":["a2a"],"framework":null,"type":"agent"},"workloadType":"deployment","createdAt":null}]}`))
+			case "team2":
+				_, _ = w.Write([]byte(`{"items":[{"name":"weather","namespace":"team2","description":"d2","status":"Not Ready","labels":{"protocol":null,"framework":null,"type":"agent"},"workloadType":null,"createdAt":null}]}`))
+			default:
+				_, _ = w.Write([]byte(`{"items":[]}`))
+			}
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	t.Cleanup(srv.Close)
 
-	// --namespaces (explicit set) takes precedence over the group --namespace.
-	if _, err := execute(t, "--server", srv.URL+"/api/v1/",
-		"agents", "--namespace", "ignored", "list", "--namespaces", "team1,team2"); err != nil {
-		t.Fatalf("agents list: %v", err)
-	}
-	if len(*queried) != 2 || (*queried)[0] != "team1" || (*queried)[1] != "team2" {
-		t.Errorf("queried = %v, want [team1 team2]", *queried)
-	}
-}
-
-func TestAgentsListMultipleNamespacesTable(t *testing.T) {
-	srv, queried := newPerNamespaceAgentsServer(t, map[string]string{
-		"team1": `{"items":[{"name":"orders","namespace":"team1","description":"d1","status":"Ready","labels":{"protocol":["a2a"],"framework":null,"type":"agent"},"workloadType":"deployment","createdAt":null}]}`,
-		"team2": `{"items":[{"name":"weather","namespace":"team2","description":"d2","status":"Not Ready","labels":{"protocol":null,"framework":null,"type":"agent"},"workloadType":null,"createdAt":null}]}`,
-	})
-
-	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "list", "--namespaces", "team1,team2")
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "list", "--all-namespaces")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// One request per namespace, in order.
-	if len(*queried) != 2 || (*queried)[0] != "team1" || (*queried)[1] != "team2" {
-		t.Errorf("queried namespaces = %v, want [team1 team2]", *queried)
 	}
 
 	// Both namespaces' agents appear in the single combined table.
@@ -325,24 +334,26 @@ func TestAgentsListMultipleNamespacesTable(t *testing.T) {
 	}
 }
 
-func TestAgentsListMultipleNamespacesJSON(t *testing.T) {
-	srv, queried := newPerNamespaceAgentsServer(t, map[string]string{
-		"team1": `{"items":[{"name":"orders","namespace":"team1","description":"d","status":"Ready","labels":{"protocol":null,"framework":null,"type":"agent"},"workloadType":null,"createdAt":null}]}`,
-		"team2": `{"items":[]}`,
-	})
+func TestAgentsListAllNamespacesJSONSeparator(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/namespaces":
+			_, _ = w.Write([]byte(`{"namespaces": ["team1", "team2"]}`))
+		case "/api/v1/agents":
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	t.Cleanup(srv.Close)
 
-	out, err := execute(t, "--server", srv.URL+"/api/v1/",
-		"agents", "list", "--json", "--namespaces", "team1", "--namespaces", "team2")
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "list", "--all-namespaces", "--json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Repeated --namespaces flags accumulate, one request each.
-	if len(*queried) != 2 {
-		t.Fatalf("expected 2 requests, got %d (%v)", len(*queried), *queried)
-	}
-
-	// Two JSON documents separated by a "---" line.
+	// One JSON document per discovered namespace, separated by "---".
 	parts := strings.Split(out, "---\n")
 	if len(parts) != 2 {
 		t.Fatalf("expected 2 JSON parts separated by ---, got %d:\n%s", len(parts), out)
@@ -360,7 +371,7 @@ func TestAgentsListMultipleNamespacesJSON(t *testing.T) {
 func TestAgentsListSingleJSONHasNoSeparator(t *testing.T) {
 	srv, _ := newAgentsServer(t, `{"items": []}`)
 
-	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "list", "--json")
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "--namespace", "default", "list", "--json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

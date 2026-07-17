@@ -72,11 +72,11 @@ rossoctl auth-config
 rossoctl auth-config --json
 rossoctl --server http://my-host:8080/api/v1/ auth-config
 
-# List agents (GET <server>/agents, one request per namespace)
-rossoctl agents list                            # discovers namespaces via GET /namespaces, lists agents in each
-rossoctl agents list --namespaces team1,team2   # comma-separated
-rossoctl agents list -n team1 -n team2          # or repeated
-rossoctl agents list --namespaces team1,team2 --json   # each response, separated by ---
+# List agents (GET <server>/agents)
+rossoctl agents list                            # single namespace: agents --namespace, else current context
+rossoctl agents --namespace team2 list          # list one specific namespace
+rossoctl agents list --all-namespaces           # -A: discover via GET /namespaces, list across all
+rossoctl agents list --all-namespaces --json    # each namespace's response, separated by ---
 
 # Show one agent (GET <server>/agents/<namespace>/<name>)
 rossoctl agents get orders                      # single-column text, laid out like the web detail page
@@ -93,7 +93,6 @@ rossoctl agents import --deployment-type sandbox from-image \
 
 # `agents --namespace` overrides the current context's namespace for any agents subcommand
 rossoctl agents --namespace team2 get orders    # -> GET /agents/team2/orders
-rossoctl agents --namespace team2 list          # list just team2 (no discovery)
 
 # List tools (GET <server>/tools) — same options as `agents list`
 rossoctl tools list

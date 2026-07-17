@@ -258,7 +258,7 @@ func TestCurrentContextDrivesServer(t *testing.T) {
 	}
 
 	// No --server -> uses the context server + token.
-	if _, err := execute(t, "agents", "list", "--namespaces", "team1"); err != nil {
+	if _, err := execute(t, "agents", "--namespace", "team1", "list"); err != nil {
 		t.Fatalf("agents list via context: %v", err)
 	}
 	if got := gotAuthByHost[hostOf(t, ctxSrv.URL)]; got != "Bearer ctxtok" {
@@ -267,7 +267,7 @@ func TestCurrentContextDrivesServer(t *testing.T) {
 
 	// Explicit --server overrides the context and drops the token.
 	if _, err := execute(t, "--server", overrideSrv.URL+"/api/v1/",
-		"agents", "list", "--namespaces", "team1"); err != nil {
+		"agents", "--namespace", "team1", "list"); err != nil {
 		t.Fatalf("agents list via override: %v", err)
 	}
 	if got := gotAuthByHost[hostOf(t, overrideSrv.URL)]; got != "" {
