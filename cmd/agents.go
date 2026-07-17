@@ -17,13 +17,14 @@ var (
 	agentsListAllNamespaces bool
 
 	// agentsNamespaceFlag backs the persistent --namespace flag on the agents
-	// group. When set it overrides the current context's namespace for the
+	// group. When set it overrides the effective context's namespace for the
 	// agents subcommands.
 	agentsNamespaceFlag string
 )
 
 // agentsNamespace returns the namespace the agents subcommands should use:
-// the --namespace flag when given, otherwise the current context's namespace.
+// the --namespace flag when given, otherwise the effective context's namespace
+// (the --context override, else the current context).
 func agentsNamespace() (string, error) {
 	if agentsNamespaceFlag != "" {
 		return agentsNamespaceFlag, nil
@@ -162,10 +163,12 @@ func truncate(s string) string {
 func init() {
 	agentsCmd := newGroup("agents", "Manage agents")
 
-	// Persistent so every agents subcommand inherits it. No -n shorthand: that
-	// belongs to `agents list --namespaces`.
+	// Persistent so every agents subcommand inherits them. No -n shorthand for
+	// --namespace: that belongs to `agents list --namespaces`.
 	agentsCmd.PersistentFlags().StringVar(&agentsNamespaceFlag, "namespace", "",
-		"namespace for agents subcommands (overrides the current context's namespace)")
+		"namespace for agents subcommands (overrides the context's namespace)")
+	agentsCmd.PersistentFlags().StringVar(&contextOverride, "context", "",
+		"use this context instead of the current one")
 
 	agentsListCmd.Flags().BoolVar(&agentsListJSON, "json", false, "print the raw JSON response unchanged")
 	agentsListCmd.Flags().BoolVarP(&agentsListAllNamespaces, "all-namespaces", "A", false, "list agents across all namespaces discovered from the server")

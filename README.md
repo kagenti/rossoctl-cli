@@ -93,8 +93,12 @@ rossoctl agents import --deployment-type sandbox from-image \
     --name orders --containerImage ghcr.io/x/y:latest --imagePullSecret regcred \
     --envVarsURL https://example.com/orders.env   # newline-separated key=value
 
-# `agents --namespace` overrides the current context's namespace for any agents subcommand
+# `agents --namespace` overrides the context's namespace for any agents subcommand
 rossoctl agents --namespace team2 get orders    # -> GET /agents/team2/orders
+
+# `agents --context` uses a named context instead of the current one (its server, token, namespace)
+rossoctl agents --context prod get orders
+rossoctl agents --context prod --namespace teamX list   # --namespace still overrides the context's namespace
 
 # List tools (GET <server>/tools) — same options as `agents list`
 rossoctl tools list

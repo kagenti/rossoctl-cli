@@ -58,53 +58,66 @@ func serverOrDefault() string {
 	return defaultServer
 }
 
+// contextOverride is the name of a context to use instead of the current one.
+// It is bound to the agents group's --context flag; empty means "use the
+// current context".
+var contextOverride string
+
+// resolveContext returns the effective context: the one named by --context
+// when that flag is set (error if no such context exists), otherwise the
+// current context. The config is created (and seeded from the default server)
+// on first use if it does not yet exist.
+func resolveContext() (*config.Context, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, err
+	}
+	if contextOverride != "" {
+		ctx, ok := cfg.Get(contextOverride)
+		if !ok {
+			return nil, fmt.Errorf("no context named %q", contextOverride)
+		}
+		return ctx, nil
+	}
+	cur, ok := cfg.Current()
+	if !ok {
+		// EnsureContext (via loadConfig) guarantees a current context; treat
+		// its absence as a programming error rather than silently falling back.
+		return nil, fmt.Errorf("no current context")
+	}
+	return cur, nil
+}
+
 // resolveServer determines the effective server URI and bearer token for a
 // command:
 //
 //   - An explicit (non-empty) --server wins and overrides any context; no
 //     token is used in that case.
-//   - Otherwise the current context supplies both the server URI and its
-//     bearer token. The context config is created (and seeded from the default
-//     server) on first use if it does not yet exist.
+//   - Otherwise the effective context (see resolveContext: --context, else the
+//     current context) supplies both the server URI and its bearer token.
 func resolveServer() (serverURI, token string, err error) {
 	if server != "" {
 		return server, "", nil
 	}
-
-	path, err := config.DefaultPath()
+	ctx, err := resolveContext()
 	if err != nil {
 		return "", "", err
 	}
-	cfg, err := config.EnsureContext(path, defaultServer)
-	if err != nil {
-		return "", "", err
-	}
-	cur, ok := cfg.Current()
-	if !ok {
-		// EnsureContext guarantees a current context; treat its absence as a
-		// programming error rather than silently falling back.
-		return "", "", fmt.Errorf("no current context in %s", path)
-	}
-	return cur.Server, cur.BearerToken, nil
+	return ctx.Server, ctx.BearerToken, nil
 }
 
-// currentNamespace returns the namespace of the current context, loading (and
-// lazily creating) the context config as needed. It returns an error if the
-// current context has no namespace set, since callers that need a namespace
-// cannot proceed without one.
+// currentNamespace returns the namespace of the effective context (see
+// resolveContext). It returns an error if that context has no namespace set,
+// since callers that need a namespace cannot proceed without one.
 func currentNamespace() (string, error) {
-	cfg, err := loadConfig()
+	ctx, err := resolveContext()
 	if err != nil {
 		return "", err
 	}
-	cur, ok := cfg.Current()
-	if !ok {
-		return "", fmt.Errorf("no current context")
+	if ctx.Namespace == "" {
+		return "", fmt.Errorf("context %q has no namespace set; run `rossoctl config set-context --namespace <ns>`", ctx.Name)
 	}
-	if cur.Namespace == "" {
-		return "", fmt.Errorf("current context %q has no namespace set; run `rossoctl config set-context --namespace <ns>`", cur.Name)
-	}
-	return cur.Namespace, nil
+	return ctx.Namespace, nil
 }
 
 // newClient builds an API client for the effective server (see resolveServer).
