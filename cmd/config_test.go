@@ -221,10 +221,138 @@ func TestConfigSetContextUnknownNamespaceWarnsButSets(t *testing.T) {
 	}
 }
 
-func TestConfigSetContextRequiresNamespace(t *testing.T) {
+func TestConfigSetContextRequiresSomething(t *testing.T) {
 	isolateHome(t)
+	// With no --namespace/--server/--name there is nothing to change.
 	if _, err := execute(t, "config", "set-context"); err == nil {
-		t.Error("set-context without --namespace should error")
+		t.Error("set-context with no flags should error")
+	}
+}
+
+func TestConfigSetContextRenamesCurrent(t *testing.T) {
+	path := isolateHome(t)
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", "http://dev/api/v1/", "--namespace", "team1"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+
+	// Rename the current context dev -> prod.
+	if _, err := execute(t, "config", "set-context", "--name", "prod"); err != nil {
+		t.Fatalf("set-context --name: %v", err)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if _, ok := cfg.Get("dev"); ok {
+		t.Error("old name dev should be gone")
+	}
+	prod, ok := cfg.Get("prod")
+	if !ok {
+		t.Fatal("renamed context prod not found")
+	}
+	// Other fields preserved.
+	if prod.Server != "http://dev/api/v1/" || prod.Namespace != "team1" {
+		t.Errorf("rename lost fields: %+v", prod)
+	}
+	// The current-context reference followed the rename.
+	if cfg.CurrentContext != "prod" {
+		t.Errorf("current context = %q, want prod", cfg.CurrentContext)
+	}
+}
+
+func TestConfigSetContextRenameAndNamespaceTogether(t *testing.T) {
+	path := isolateHome(t)
+	srv := namespacesServer(t, "team1", "team2")
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", srv.URL+"/api/v1/", "--namespace", "team1"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+
+	// Rename and change namespace in one call.
+	if _, err := execute(t, "config", "set-context", "--name", "prod", "--namespace", "team2"); err != nil {
+		t.Fatalf("set-context: %v", err)
+	}
+
+	cfg, _ := config.Load(path)
+	prod, ok := cfg.Get("prod")
+	if !ok {
+		t.Fatal("renamed context prod not found")
+	}
+	if prod.Namespace != "team2" {
+		t.Errorf("namespace = %q, want team2", prod.Namespace)
+	}
+	if cfg.CurrentContext != "prod" {
+		t.Errorf("current context = %q, want prod", cfg.CurrentContext)
+	}
+}
+
+func TestConfigSetContextRenameToExistingErrors(t *testing.T) {
+	isolateHome(t)
+	if _, err := execute(t, "config", "create-context", "--name", "a", "--server", "http://a/"); err != nil {
+		t.Fatalf("create-context a: %v", err)
+	}
+	// b becomes current.
+	if _, err := execute(t, "config", "create-context", "--name", "b", "--server", "http://b/"); err != nil {
+		t.Fatalf("create-context b: %v", err)
+	}
+	// Renaming current (b) to existing name a must error.
+	if _, err := execute(t, "config", "set-context", "--name", "a"); err == nil {
+		t.Error("renaming to an existing context name should error")
+	}
+}
+
+func TestConfigSetContextReplacesServer(t *testing.T) {
+	path := isolateHome(t)
+	oldSrv := namespacesServer(t, "team1")
+	newSrv := namespacesServer(t, "team1", "team2")
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", oldSrv.URL+"/api/v1/"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+
+	// Explicit --server must replace the context's server.
+	newServerURL := newSrv.URL + "/api/v1/"
+	if _, err := execute(t, "config", "set-context", "--namespace", "team2", "--server", newServerURL); err != nil {
+		t.Fatalf("set-context: %v", err)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	cur, _ := cfg.Current()
+	if cur.Server != newServerURL {
+		t.Errorf("server = %q, want %q", cur.Server, newServerURL)
+	}
+	if cur.Namespace != "team2" {
+		t.Errorf("namespace = %q, want team2", cur.Namespace)
+	}
+}
+
+func TestConfigSetContextKeepsServerWhenNotGiven(t *testing.T) {
+	path := isolateHome(t)
+	srv := namespacesServer(t, "team1")
+	origServer := srv.URL + "/api/v1/"
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", origServer); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+
+	// No --server: the context's server must be left unchanged.
+	if _, err := execute(t, "config", "set-context", "--namespace", "team1"); err != nil {
+		t.Fatalf("set-context: %v", err)
+	}
+
+	cfg, _ := config.Load(path)
+	cur, _ := cfg.Current()
+	if cur.Server != origServer {
+		t.Errorf("server changed to %q, want unchanged %q", cur.Server, origServer)
 	}
 }
 
@@ -258,7 +386,7 @@ func TestCurrentContextDrivesServer(t *testing.T) {
 	}
 
 	// No --server -> uses the context server + token.
-	if _, err := execute(t, "agents", "list", "--namespaces", "team1"); err != nil {
+	if _, err := execute(t, "agents", "--namespace", "team1", "list"); err != nil {
 		t.Fatalf("agents list via context: %v", err)
 	}
 	if got := gotAuthByHost[hostOf(t, ctxSrv.URL)]; got != "Bearer ctxtok" {
@@ -267,7 +395,7 @@ func TestCurrentContextDrivesServer(t *testing.T) {
 
 	// Explicit --server overrides the context and drops the token.
 	if _, err := execute(t, "--server", overrideSrv.URL+"/api/v1/",
-		"agents", "list", "--namespaces", "team1"); err != nil {
+		"agents", "--namespace", "team1", "list"); err != nil {
 		t.Fatalf("agents list via override: %v", err)
 	}
 	if got := gotAuthByHost[hostOf(t, overrideSrv.URL)]; got != "" {

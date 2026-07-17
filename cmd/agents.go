@@ -13,17 +13,18 @@ import (
 )
 
 var (
-	agentsListJSON       bool
-	agentsListNamespaces []string
+	agentsListJSON          bool
+	agentsListAllNamespaces bool
 
 	// agentsNamespaceFlag backs the persistent --namespace flag on the agents
-	// group. When set it overrides the current context's namespace for the
+	// group. When set it overrides the effective context's namespace for the
 	// agents subcommands.
 	agentsNamespaceFlag string
 )
 
 // agentsNamespace returns the namespace the agents subcommands should use:
-// the --namespace flag when given, otherwise the current context's namespace.
+// the --namespace flag when given, otherwise the effective context's namespace
+// (the --context override, else the current context).
 func agentsNamespace() (string, error) {
 	if agentsNamespaceFlag != "" {
 		return agentsNamespaceFlag, nil
@@ -36,14 +37,13 @@ var agentsListCmd = &cobra.Command{
 	Short: "List agents",
 	Long: `List agents reported by the server (GET <server>/agents).
 
-Use --namespaces to list agents across one or more namespaces; a separate
-request (GET <server>/agents?namespace=<namespace>) is made for each, and the
-results are combined. When --namespaces is omitted, the set of namespaces is
-discovered from the server (GET <server>/namespaces) and agents are listed
-across all of them.
+By default agents are listed in a single namespace — the agents --namespace
+flag, or the current context's namespace. With --all-namespaces, the set of
+namespaces is discovered from the server (GET <server>/namespaces) and agents
+are listed across all of them, with a separate request per namespace.
 
-By default the combined agents are printed as a single human-readable table
-with a NAMESPACE column. With --json each namespace's raw response is printed
+The combined agents are printed as a single human-readable table with a
+NAMESPACE column. With --json each namespace's raw response is printed
 unchanged, separated by a line containing "---".`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -52,20 +52,23 @@ unchanged, separated by a line containing "---".`,
 			return err
 		}
 
-		// Namespace selection, in order of precedence:
-		//   1. --namespaces (explicit set, possibly several)
-		//   2. the group --namespace override (a single namespace)
-		//   3. discovery via GET /namespaces (list agents across all)
-		namespaces := agentsListNamespaces
-		if len(namespaces) == 0 && agentsNamespaceFlag != "" {
-			namespaces = []string{agentsNamespaceFlag}
-		}
-		if len(namespaces) == 0 {
+		// Namespace selection:
+		//   --all-namespaces -> discover via GET /namespaces (list across all)
+		//   otherwise        -> a single namespace (agents --namespace, else
+		//                        the current context)
+		var namespaces []string
+		if agentsListAllNamespaces {
 			nsResp, err := client.ListNamespaces(cmd.Context(), true)
 			if err != nil {
 				return err
 			}
 			namespaces = nsResp.Namespaces
+		} else {
+			ns, err := agentsNamespace()
+			if err != nil {
+				return err
+			}
+			namespaces = []string{ns}
 		}
 
 		responses := make([]*apiclient.AgentListResponse, 0, len(namespaces))
@@ -160,13 +163,15 @@ func truncate(s string) string {
 func init() {
 	agentsCmd := newGroup("agents", "Manage agents")
 
-	// Persistent so every agents subcommand inherits it. No -n shorthand: that
-	// belongs to `agents list --namespaces`.
+	// Persistent so every agents subcommand inherits them. No -n shorthand for
+	// --namespace: that belongs to `agents list --namespaces`.
 	agentsCmd.PersistentFlags().StringVar(&agentsNamespaceFlag, "namespace", "",
-		"namespace for agents subcommands (overrides the current context's namespace)")
+		"namespace for agents subcommands (overrides the context's namespace)")
+	agentsCmd.PersistentFlags().StringVar(&contextOverride, "context", "",
+		"use this context instead of the current one")
 
 	agentsListCmd.Flags().BoolVar(&agentsListJSON, "json", false, "print the raw JSON response unchanged")
-	agentsListCmd.Flags().StringSliceVarP(&agentsListNamespaces, "namespaces", "n", nil, "namespaces to list agents in (repeatable or comma-separated; default: server default)")
+	agentsListCmd.Flags().BoolVarP(&agentsListAllNamespaces, "all-namespaces", "A", false, "list agents across all namespaces discovered from the server")
 
 	agentsCmd.AddCommand(
 		newLeaf("add-skill [name]", "Add a skill to an agent"),

@@ -122,6 +122,65 @@ func TestSetCurrentUnknownErrors(t *testing.T) {
 	}
 }
 
+func TestRename(t *testing.T) {
+	cfg := &Config{}
+	cfg.Upsert(Context{Name: "old", Server: "http://s/", Namespace: "team1"})
+	_ = cfg.SetCurrent("old")
+
+	if err := cfg.Rename("old", "new"); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	if _, ok := cfg.Get("old"); ok {
+		t.Error("old name should be gone after rename")
+	}
+	ctx, ok := cfg.Get("new")
+	if !ok {
+		t.Fatal("new name not found after rename")
+	}
+	// Other fields are preserved.
+	if ctx.Server != "http://s/" || ctx.Namespace != "team1" {
+		t.Errorf("rename lost fields: %+v", ctx)
+	}
+	// Renaming the current context updates the reference.
+	if cfg.CurrentContext != "new" {
+		t.Errorf("CurrentContext = %q, want new", cfg.CurrentContext)
+	}
+}
+
+func TestRenameNonCurrentLeavesCurrent(t *testing.T) {
+	cfg := &Config{}
+	cfg.Upsert(Context{Name: "a", Server: "http://a/"})
+	cfg.Upsert(Context{Name: "b", Server: "http://b/"})
+	_ = cfg.SetCurrent("a")
+
+	if err := cfg.Rename("b", "b2"); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	if cfg.CurrentContext != "a" {
+		t.Errorf("CurrentContext = %q, want a (unchanged)", cfg.CurrentContext)
+	}
+}
+
+func TestRenameErrors(t *testing.T) {
+	cfg := &Config{}
+	cfg.Upsert(Context{Name: "a", Server: "http://a/"})
+	cfg.Upsert(Context{Name: "b", Server: "http://b/"})
+
+	if err := cfg.Rename("missing", "x"); err == nil {
+		t.Error("renaming an unknown context should error")
+	}
+	if err := cfg.Rename("a", "b"); err == nil {
+		t.Error("renaming to an existing name should error")
+	}
+	if err := cfg.Rename("a", ""); err == nil {
+		t.Error("renaming to an empty name should error")
+	}
+	// No-op rename is allowed.
+	if err := cfg.Rename("a", "a"); err != nil {
+		t.Errorf("no-op rename should be allowed, got %v", err)
+	}
+}
+
 func TestCurrent(t *testing.T) {
 	cfg := &Config{}
 	if _, ok := cfg.Current(); ok {

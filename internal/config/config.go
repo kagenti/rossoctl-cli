@@ -145,6 +145,31 @@ func (c *Config) SetCurrent(name string) error {
 	return nil
 }
 
+// Rename changes the name of context oldName to newName. It errors if oldName
+// is unknown or newName already names a different context. Renaming a no-op
+// (oldName == newName) is allowed. If the renamed context was current, the
+// current-context reference is updated to newName.
+func (c *Config) Rename(oldName, newName string) error {
+	if newName == "" {
+		return fmt.Errorf("new context name must not be empty")
+	}
+	ctx, ok := c.Get(oldName)
+	if !ok {
+		return fmt.Errorf("no context named %q", oldName)
+	}
+	if oldName == newName {
+		return nil
+	}
+	if _, exists := c.Get(newName); exists {
+		return fmt.Errorf("a context named %q already exists", newName)
+	}
+	ctx.Name = newName
+	if c.CurrentContext == oldName {
+		c.CurrentContext = newName
+	}
+	return nil
+}
+
 // EnsureContext loads the config at path and, if it contains no contexts,
 // seeds one from defaultServer (using the server URI as the context name, with
 // an empty bearer token), makes it current, and saves. The resulting config is
