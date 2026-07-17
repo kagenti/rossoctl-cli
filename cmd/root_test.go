@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -19,6 +20,10 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	_ = os.Setenv("HOME", dir)
+	// Never spawn a real browser during the device-login tests, and don't
+	// actually sleep between token polls.
+	browserOpener = func(string) error { return nil }
+	deviceflowSleep = func(time.Duration) {}
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)

@@ -13,7 +13,8 @@ This project follows the standard Go CLI layout:
 │   ├── root.go                 # Root command + Execute() + persistent flags
 │   ├── version.go              # `rossoctl version`
 │   ├── unimplemented.go        # newGroup/newLeaf helpers + UNIMPLEMENTED stub
-│   ├── toplevel.go             # apply, install, login, status, uninstall
+│   ├── toplevel.go             # apply, install, status, uninstall
+│   ├── login.go                # `rossoctl login` (--token or OAuth device flow)
 │   ├── agents.go               # `rossoctl agents ...` (`list` fetches GET /agents)
 │   ├── authconfig.go           # `rossoctl auth-config` (shows server auth config)
 │   ├── config.go               # `rossoctl config ...` (context management)
@@ -26,7 +27,8 @@ This project follows the standard Go CLI layout:
 ├── internal/                   # Private application logic (not importable externally)
 │   ├── apiclient/              # HTTP client for the Rossoctl backend API
 │   ├── buildinfo/              # Version metadata formatting
-│   └── config/                 # ~/.rossoctl/config.yaml context persistence
+│   ├── config/                 # ~/.rossoctl/config.yaml context persistence
+│   └── deviceflow/             # OAuth 2.0 device authorization grant (Keycloak)
 ├── Makefile
 └── go.mod
 ```
@@ -61,7 +63,8 @@ rossoctl config get-contexts                    # created + seeded on first use
 rossoctl config create-context --name dev \
     --server http://my-host:8080/api/v1/ --bearer-token <token>   # becomes current
 rossoctl config use-context dev
-rossoctl login --token <token>                  # set the token on the current context
+rossoctl login --token <token>                  # set the token on the current context directly
+rossoctl login                                  # or: OAuth device flow against the server's Keycloak
 
 # Show the server's auth configuration (GET <server>/auth/config)
 rossoctl auth-config
@@ -100,6 +103,16 @@ The server a command talks to is resolved as: an explicit `--server` flag wins
 server URI and its bearer token. The global `--server` and `--verbose`/`-v`
 flags must appear before the subcommand; `-v` logs each REST request (method,
 URL, status, timing) to stderr.
+
+### Logging in
+
+`rossoctl login --token <token>` stores a token on the current context
+directly. `rossoctl login` (no `--token`) runs the OAuth 2.0 device
+authorization grant (RFC 8628): it reads `keycloak_url`, `realm`, and
+`client_id` from `GET <server>/auth/config`, requests a device code from
+Keycloak, prints a verification URL and one-time code (and best-effort opens a
+browser), polls until you authorize, and saves the resulting bearer token on
+the current context.
 
 The command tree mirrors the subcommands referenced in the Rossoctl docs
 (`agents`, `config`, `gateway`, `images`, `namespaces`, `skills`, `tools`, `ui`,
