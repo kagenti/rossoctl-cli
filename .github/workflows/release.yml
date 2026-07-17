@@ -1,0 +1,85 @@
+name: release
+
+# Build cross-platform rossoctl binaries and attach them to the GitHub release.
+# Assets are named to match the download URL:
+#   rossoctl-${ROSSOCTL_CLI_VERSION}-${OSEXT}-${OS_ARCH}.tar.gz
+# where ROSSOCTL_CLI_VERSION is the release tag, OSEXT is a `uname` value
+# (Linux, Darwin) and OS_ARCH is a `uname -m` value (x86_64, arm64).
+
+on:
+  release:
+    types: [published]
+  # Manual trigger for testing: attaches assets to an existing release/tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and upload assets for (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write # required to upload release assets
+
+jobs:
+  build:
+    name: build ${{ matrix.osext }}-${{ matrix.os_arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { osext: Linux, os_arch: x86_64, goos: linux, goarch: amd64 }
+          - { osext: Linux, os_arch: arm64, goos: linux, goarch: arm64 }
+          - { osext: Darwin, os_arch: x86_64, goos: darwin, goarch: amd64 }
+          - { osext: Darwin, os_arch: arm64, goos: darwin, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            version="${{ github.event.release.tag_name }}"
+          else
+            version="${{ github.event.inputs.tag }}"
+          fi
+          if [ -z "$version" ]; then
+            echo "could not determine release version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build and package
+        id: package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          OSEXT: ${{ matrix.osext }}
+          OS_ARCH: ${{ matrix.os_arch }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          pkg="github.com/kagenti/rossoctl-cli/cmd"
+          commit="$(git rev-parse --short HEAD)"
+          date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          ldflags="-s -w \
+            -X '${pkg}.version=${VERSION}' \
+            -X '${pkg}.commit=${commit}' \
+            -X '${pkg}.date=${date}'"
+
+          mkdir -p dist/rossoctl
+          go build -trimpath -ldflags "$ldflags" -o dist/rossoctl/rossoctl .
+
+          archive="rossoctl-${VERSION}-${OSEXT}-${OS_ARCH}.tar.gz"
+          tar -czf "$archive" -C dist/rossoctl rossoctl
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Upload asset to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          files: ${{ steps.package.outputs.archive }}

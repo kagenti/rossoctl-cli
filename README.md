@@ -43,7 +43,23 @@ Design principles:
   of I/O, so they can be unit-tested directly. `internal/` also prevents other
   modules from importing this code.
 
-## Build
+## Install a release
+
+Each GitHub release ships prebuilt binaries (see `.github/workflows/release.yml`).
+Download the tarball for your platform, where `OSEXT` is `uname` and `OS_ARCH`
+is `uname -m`:
+
+```sh
+ROSSOCTL_CLI_VERSION=v0.1.0
+OSEXT=$(uname)          # Linux or Darwin
+OS_ARCH=$(uname -m)     # x86_64 or arm64
+# Assets label arm64 as "arm64" on both OSes; Linux uname -m reports aarch64.
+[ "$OS_ARCH" = "aarch64" ] && OS_ARCH=arm64
+url="https://github.com/kagenti/rossoctl-cli/releases/download/${ROSSOCTL_CLI_VERSION}/rossoctl-${ROSSOCTL_CLI_VERSION}-${OSEXT}-${OS_ARCH}.tar.gz"
+curl -fsSL "$url" | tar -xz     # extracts ./rossoctl
+```
+
+## Build from source
 
 ```sh
 make build      # -> ./bin/rossoctl (version info injected via -ldflags)
