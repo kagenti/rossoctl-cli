@@ -264,6 +264,39 @@ func TestAgentsListDiscoversNoNamespaces(t *testing.T) {
 	}
 }
 
+func TestAgentsListNamespaceFlagOverridesDiscovery(t *testing.T) {
+	// The per-namespace server errors if /namespaces is hit, so this also
+	// proves --namespace bypasses discovery.
+	srv, queried := newPerNamespaceAgentsServer(t, map[string]string{
+		"team1": `{"items":[{"name":"orders","namespace":"team1","description":"d","status":"Ready","labels":{"protocol":null,"framework":null,"type":"agent"},"workloadType":null,"createdAt":null}]}`,
+	})
+
+	// Group --namespace with no --namespaces: query exactly that one namespace.
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "agents", "--namespace", "team1", "list")
+	if err != nil {
+		t.Fatalf("agents list: %v", err)
+	}
+	if len(*queried) != 1 || (*queried)[0] != "team1" {
+		t.Errorf("queried namespaces = %v, want [team1]", *queried)
+	}
+	if !strings.Contains(out, "orders") {
+		t.Errorf("output missing agent:\n%s", out)
+	}
+}
+
+func TestAgentsListNamespacesFlagWinsOverGroupNamespace(t *testing.T) {
+	srv, queried := newPerNamespaceAgentsServer(t, map[string]string{})
+
+	// --namespaces (explicit set) takes precedence over the group --namespace.
+	if _, err := execute(t, "--server", srv.URL+"/api/v1/",
+		"agents", "--namespace", "ignored", "list", "--namespaces", "team1,team2"); err != nil {
+		t.Fatalf("agents list: %v", err)
+	}
+	if len(*queried) != 2 || (*queried)[0] != "team1" || (*queried)[1] != "team2" {
+		t.Errorf("queried = %v, want [team1 team2]", *queried)
+	}
+}
+
 func TestAgentsListMultipleNamespacesTable(t *testing.T) {
 	srv, queried := newPerNamespaceAgentsServer(t, map[string]string{
 		"team1": `{"items":[{"name":"orders","namespace":"team1","description":"d1","status":"Ready","labels":{"protocol":["a2a"],"framework":null,"type":"agent"},"workloadType":"deployment","createdAt":null}]}`,

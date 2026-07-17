@@ -150,6 +150,66 @@ func TestListAgentsNoNamespace(t *testing.T) {
 	}
 }
 
+func TestGetAgent(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{
+			"metadata": {"name":"orders","namespace":"team1","uid":"u1"},
+			"spec": {"replicas": 3, "source": {"git": {"url": "http://g"}}},
+			"status": {"conditions": [{"type":"Available","status":"True"}]},
+			"workloadType": "deployment",
+			"readyStatus": "Ready",
+			"service": {"name":"orders","type":"ClusterIP","clusterIP":"1.2.3.4","ports":[{"name":"http","port":8080,"targetPort":8000}]}
+		}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/"}
+	agent, err := c.GetAgent(context.Background(), "team1", "orders")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotPath != "/api/v1/agents/team1/orders" {
+		t.Errorf("path = %q, want %q", gotPath, "/api/v1/agents/team1/orders")
+	}
+	if agent.Metadata.Name != "orders" || agent.ReadyStatus != "Ready" {
+		t.Errorf("unexpected agent: %+v", agent.Metadata)
+	}
+	if agent.Service == nil || agent.Service.ClusterIP != "1.2.3.4" {
+		t.Errorf("service not decoded: %+v", agent.Service)
+	}
+	if _, ok := agent.Spec["source"]; !ok {
+		t.Error("spec.source not present in decoded map")
+	}
+}
+
+func TestDeleteAgent(t *testing.T) {
+	var gotMethod, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"success": true, "message": "deleted"}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/"}
+	resp, err := c.DeleteAgent(context.Background(), "team1", "orders")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method = %q, want DELETE", gotMethod)
+	}
+	if gotPath != "/api/v1/agents/team1/orders" {
+		t.Errorf("path = %q, want /api/v1/agents/team1/orders", gotPath)
+	}
+	if !resp.Success || resp.Message != "deleted" {
+		t.Errorf("unexpected response: %+v", resp)
+	}
+}
+
 func TestListNamespaces(t *testing.T) {
 	tests := []struct {
 		name        string

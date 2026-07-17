@@ -61,8 +61,9 @@ rossoctl agents --help
 # Manage contexts (persisted in ~/.rossoctl/config.yaml, kubectl-style)
 rossoctl config get-contexts                    # created + seeded on first use
 rossoctl config create-context --name dev \
-    --server http://my-host:8080/api/v1/ --bearer-token <token>   # becomes current
+    --server http://my-host:8080/api/v1/ --namespace team1 --bearer-token <token>   # becomes current
 rossoctl config use-context dev
+rossoctl config set-context --namespace team1   # set namespace on current context (warns if unknown to server)
 rossoctl login --token <token>                  # set the token on the current context directly
 rossoctl login                                  # or: OAuth device flow against the server's Keycloak
 
@@ -76,6 +77,17 @@ rossoctl agents list                            # discovers namespaces via GET /
 rossoctl agents list --namespaces team1,team2   # comma-separated
 rossoctl agents list -n team1 -n team2          # or repeated
 rossoctl agents list --namespaces team1,team2 --json   # each response, separated by ---
+
+# Show one agent (GET <server>/agents/<namespace>/<name>)
+rossoctl agents get orders                      # single-column text, laid out like the web detail page
+rossoctl agents get orders --json               # raw JSON
+
+# Delete an agent (DELETE <server>/agents/<namespace>/<name>)
+rossoctl agents delete orders
+
+# `agents --namespace` overrides the current context's namespace for any agents subcommand
+rossoctl agents --namespace team2 get orders    # -> GET /agents/team2/orders
+rossoctl agents --namespace team2 list          # list just team2 (no discovery)
 
 # List tools (GET <server>/tools) — same options as `agents list`
 rossoctl tools list
@@ -93,7 +105,8 @@ rossoctl -v agents list
 ### Contexts and server resolution
 
 Contexts are persisted in `~/.rossoctl/config.yaml` (directory `0700`, file
-`0600`). Each context has a name, a server URI, and an optional bearer token.
+`0600`). Each context has a name, a server URI, an optional namespace, and an
+optional bearer token.
 The file is created lazily — the first command that needs it seeds a context
 from the default server (`http://kagenti-ui.localtest.me:8080/api/v1/`) and
 makes it current. Creating a context makes it current.
@@ -118,6 +131,7 @@ The command tree mirrors the subcommands referenced in the Rossoctl docs
 (`agents`, `config`, `gateway`, `images`, `namespaces`, `skills`, `tools`, `ui`,
 plus `auth-config` and the top-level `apply`, `install`, `login`, `status`,
 `uninstall`). The
-`config` context commands, `login`, `auth-config`, `agents list`, `tools list`,
-and `namespaces list` are implemented; other leaf commands currently print
-`UNIMPLEMENTED` as a placeholder.
+`config` context commands, `login`, `auth-config`, `agents list`,
+`agents get`, `agents delete`, `tools list`, and `namespaces list` are
+implemented; other leaf commands currently print `UNIMPLEMENTED` as a
+placeholder.

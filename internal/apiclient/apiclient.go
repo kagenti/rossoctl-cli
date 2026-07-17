@@ -85,12 +85,24 @@ func (c *Client) resolve(ref string) (string, error) {
 // getJSON performs a GET on the resolved path and decodes the JSON body
 // into out.
 func (c *Client) getJSON(ctx context.Context, path string, out any) error {
+	return c.doJSON(ctx, http.MethodGet, path, out)
+}
+
+// deleteJSON performs a DELETE on the resolved path and decodes the JSON body
+// into out.
+func (c *Client) deleteJSON(ctx context.Context, path string, out any) error {
+	return c.doJSON(ctx, http.MethodDelete, path, out)
+}
+
+// doJSON issues a bodyless request with the given method, applies auth and
+// logging, checks the status, and decodes the JSON response into out.
+func (c *Client) doJSON(ctx context.Context, method, path string, out any) error {
 	endpoint, err := c.resolve(path)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
 	if err != nil {
 		return err
 	}
@@ -99,15 +111,15 @@ func (c *Client) getJSON(ctx context.Context, path string, out any) error {
 		req.Header.Set("Authorization", "Bearer "+c.BearerToken)
 	}
 
-	c.logf("GET %s", endpoint)
+	c.logf("%s %s", method, endpoint)
 	start := time.Now()
 	resp, err := c.httpClient().Do(req)
 	if err != nil {
-		c.logf("GET %s failed after %s: %v", endpoint, time.Since(start).Round(time.Millisecond), err)
+		c.logf("%s %s failed after %s: %v", method, endpoint, time.Since(start).Round(time.Millisecond), err)
 		return fmt.Errorf("requesting %s: %w", endpoint, err)
 	}
 	defer resp.Body.Close()
-	c.logf("GET %s -> %s (%s)", endpoint, resp.Status, time.Since(start).Round(time.Millisecond))
+	c.logf("%s %s -> %s (%s)", method, endpoint, resp.Status, time.Since(start).Round(time.Millisecond))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -167,6 +179,71 @@ func (c *Client) ListAgents(ctx context.Context, namespace string) (*AgentListRe
 
 	var resp AgentListResponse
 	if err := c.getJSON(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// AgentMetadata is the metadata block of an agent detail response.
+type AgentMetadata struct {
+	Name              string            `json:"name"`
+	Namespace         string            `json:"namespace"`
+	Labels            map[string]string `json:"labels"`
+	Annotations       map[string]string `json:"annotations"`
+	CreationTimestamp *string           `json:"creationTimestamp"`
+	UID               *string           `json:"uid"`
+}
+
+// ServicePort is one port of an agent's Service.
+type ServicePort struct {
+	Name       string `json:"name"`
+	Port       int    `json:"port"`
+	TargetPort any    `json:"targetPort"` // may be int or string
+}
+
+// ServiceInfo is the optional service block of an agent detail response.
+type ServiceInfo struct {
+	Name      string        `json:"name"`
+	Type      string        `json:"type"`
+	ClusterIP string        `json:"clusterIP"`
+	Ports     []ServicePort `json:"ports"`
+}
+
+// AgentDetail mirrors the backend's GET /agents/{namespace}/{name} response.
+// spec and status are workload-shaped and free-form, so they are kept as maps
+// and read opportunistically by the renderer.
+type AgentDetail struct {
+	Metadata     AgentMetadata  `json:"metadata"`
+	Spec         map[string]any `json:"spec"`
+	Status       map[string]any `json:"status"`
+	WorkloadType string         `json:"workloadType"`
+	ReadyStatus  string         `json:"readyStatus"`
+	Service      *ServiceInfo   `json:"service"`
+}
+
+// GetAgent fetches GET /agents/<namespace>/<name>.
+func (c *Client) GetAgent(ctx context.Context, namespace, name string) (*AgentDetail, error) {
+	path := "agents/" + url.PathEscape(namespace) + "/" + url.PathEscape(name)
+
+	var detail AgentDetail
+	if err := c.getJSON(ctx, path, &detail); err != nil {
+		return nil, err
+	}
+	return &detail, nil
+}
+
+// DeleteResponse mirrors the backend's DeleteResponse model.
+type DeleteResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+// DeleteAgent issues DELETE /agents/<namespace>/<name>.
+func (c *Client) DeleteAgent(ctx context.Context, namespace, name string) (*DeleteResponse, error) {
+	path := "agents/" + url.PathEscape(namespace) + "/" + url.PathEscape(name)
+
+	var resp DeleteResponse
+	if err := c.deleteJSON(ctx, path, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

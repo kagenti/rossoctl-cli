@@ -22,10 +22,12 @@ const (
 	filePerm os.FileMode = 0o600
 )
 
-// Context is a single named target: a server URI and an optional bearer token.
+// Context is a single named target: a server URI, an optional default
+// namespace, and an optional bearer token.
 type Context struct {
 	Name        string `yaml:"name" json:"name"`
 	Server      string `yaml:"server" json:"server"`
+	Namespace   string `yaml:"namespace,omitempty" json:"namespace,omitempty"`
 	BearerToken string `yaml:"bearerToken,omitempty" json:"bearerToken,omitempty"`
 }
 
