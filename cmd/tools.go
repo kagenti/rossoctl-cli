@@ -13,23 +13,37 @@ import (
 )
 
 var (
-	toolsListJSON       bool
-	toolsListNamespaces []string
+	toolsListJSON          bool
+	toolsListAllNamespaces bool
+
+	// toolsNamespaceFlag backs the persistent --namespace flag on the tools
+	// group. When set it overrides the effective context's namespace for the
+	// tools subcommands.
+	toolsNamespaceFlag string
 )
+
+// toolsNamespace returns the namespace the tools subcommands should use:
+// the --namespace flag when given, otherwise the effective context's namespace
+// (the --context override, else the current context).
+func toolsNamespace() (string, error) {
+	if toolsNamespaceFlag != "" {
+		return toolsNamespaceFlag, nil
+	}
+	return currentNamespace()
+}
 
 var toolsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List tools",
 	Long: `List tools reported by the server (GET <server>/tools).
 
-Use --namespaces to list tools across one or more namespaces; a separate
-request (GET <server>/tools?namespace=<namespace>) is made for each, and the
-results are combined. When --namespaces is omitted, the set of namespaces is
-discovered from the server (GET <server>/namespaces) and tools are listed
-across all of them.
+By default tools are listed in a single namespace — the tools --namespace
+flag, or the current context's namespace. With --all-namespaces, the set of
+namespaces is discovered from the server (GET <server>/namespaces) and tools
+are listed across all of them, with a separate request per namespace.
 
-By default the combined tools are printed as a single human-readable table
-with a NAMESPACE column. With --json each namespace's raw response is printed
+The combined tools are printed as a single human-readable table with a
+NAMESPACE column. With --json each namespace's raw response is printed
 unchanged, separated by a line containing "---".`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
@@ -38,17 +52,23 @@ unchanged, separated by a line containing "---".`,
 			return err
 		}
 
-		// When --namespaces is empty, discover the namespaces to query via
-		// the same mechanism as `namespaces list` (GET /namespaces) and list
-		// tools in each, rather than falling back to a single default-
-		// namespace request.
-		namespaces := toolsListNamespaces
-		if len(namespaces) == 0 {
+		// Namespace selection:
+		//   --all-namespaces -> discover via GET /namespaces (list across all)
+		//   otherwise        -> a single namespace (tools --namespace, else
+		//                        the current context)
+		var namespaces []string
+		if toolsListAllNamespaces {
 			nsResp, err := client.ListNamespaces(cmd.Context(), true)
 			if err != nil {
 				return err
 			}
 			namespaces = nsResp.Namespaces
+		} else {
+			ns, err := toolsNamespace()
+			if err != nil {
+				return err
+			}
+			namespaces = []string{ns}
 		}
 
 		responses := make([]*apiclient.ToolListResponse, 0, len(namespaces))
@@ -125,13 +145,20 @@ func printToolsTable(cmd *cobra.Command, tools []apiclient.ToolSummary) {
 func init() {
 	toolsCmd := newGroup("tools", "Manage tools")
 
+	// Persistent so every tools subcommand inherits them. No -n shorthand for
+	// --namespace, matching the agents group.
+	toolsCmd.PersistentFlags().StringVar(&toolsNamespaceFlag, "namespace", "",
+		"namespace for tools subcommands (overrides the context's namespace)")
+	toolsCmd.PersistentFlags().StringVar(&contextOverride, "context", "",
+		"use this context instead of the current one")
+
 	toolsListCmd.Flags().BoolVar(&toolsListJSON, "json", false, "print the raw JSON response unchanged")
-	toolsListCmd.Flags().StringSliceVarP(&toolsListNamespaces, "namespaces", "n", nil, "namespaces to list tools in (repeatable or comma-separated; default: discovered)")
+	toolsListCmd.Flags().BoolVarP(&toolsListAllNamespaces, "all-namespaces", "A", false, "list tools across all namespaces discovered from the server")
 
 	toolsCmd.AddCommand(
 		toolsListCmd,
 		newToolsImportCmd(),
-		newLeaf("delete [name]", "Delete a tool"),
+		toolsDeleteCmd,
 	)
 	rootCmd.AddCommand(toolsCmd)
 }

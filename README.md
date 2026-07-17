@@ -22,7 +22,7 @@ This project follows the standard Go CLI layout:
 │   ├── images.go               # `rossoctl images ...`
 │   ├── namespaces.go           # `rossoctl namespaces ...` (`list` fetches GET /namespaces)
 │   ├── skills.go               # `rossoctl skills ...`
-│   ├── tools.go                # `rossoctl tools ...` (`list` fetches GET /tools)
+│   ├── tools.go                # `rossoctl tools ...` (list/delete/import, mirrors agents)
 │   └── ui.go                   # `rossoctl ui ...`
 ├── internal/                   # Private application logic (not importable externally)
 │   ├── apiclient/              # HTTP client for the Rossoctl backend API
@@ -100,9 +100,15 @@ rossoctl agents --namespace team2 get orders    # -> GET /agents/team2/orders
 rossoctl agents --context prod get orders
 rossoctl agents --context prod --namespace teamX list   # --namespace still overrides the context's namespace
 
-# List tools (GET <server>/tools) — same options as `agents list`
-rossoctl tools list
-rossoctl tools list --namespaces team1,team2 --json
+# Tools mirror the agents commands, against the /tools endpoint.
+# --namespace, --context, --all-namespaces (-A), and --json behave as for agents.
+rossoctl tools list                              # single namespace (context, or --namespace)
+rossoctl tools list --all-namespaces             # discover and list across all
+rossoctl tools --namespace team2 list --json
+rossoctl tools delete weather-mcp                # DELETE /tools/<namespace>/weather-mcp
+rossoctl tools import from-image --name weather-mcp --containerImage ghcr.io/x/y:latest  # POST /tools
+rossoctl tools import --deployment-type statefulset from-image \
+    --name weather-mcp --containerImage ghcr.io/x/y:latest --envVarsURL https://example.com/tool.env
 
 # List namespaces (GET <server>/namespaces)
 rossoctl namespaces list
@@ -143,6 +149,7 @@ The command tree mirrors the subcommands referenced in the Rossoctl docs
 plus `auth-config` and the top-level `apply`, `install`, `login`, `status`,
 `uninstall`). The
 `config` context commands, `login`, `auth-config`, `agents list`,
-`agents get`, `agents delete`, `agents import from-image`, `tools list`, and
-`namespaces list` are implemented; other leaf commands currently print
+`agents get`, `agents delete`, `agents import from-image`, `tools list`,
+`tools delete`, `tools import from-image`, and `namespaces list` are
+implemented; other leaf commands currently print
 `UNIMPLEMENTED` as a placeholder.

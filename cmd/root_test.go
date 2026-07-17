@@ -141,10 +141,8 @@ var unimplementedCommands = [][]string{
 	{"images", "preload"},
 	{"skills", "list"},
 	{"skills", "publish"},
-	// "tools list" is implemented (fetches GET /tools) and tested separately;
-	// "tools import" has from-image/from-source subcommands (tested in
-	// tools_import_test.go).
-	{"tools", "delete"},
+	// tools list/get/delete and import from-image are implemented; tested in
+	// tools_test.go / tools_import_test.go.
 	{"ui", "open"},
 }
 

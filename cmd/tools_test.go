@@ -48,7 +48,7 @@ const toolsBody = `{
 func TestToolsListTable(t *testing.T) {
 	srv, gotQuery := newToolsServer(t, toolsBody)
 
-	out, err := execute(t, "--server", srv.URL+"/api/v1/", "tools", "list", "--namespaces", "team1")
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "tools", "--namespace", "team1", "list")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestToolsListTableTruncatesDescription(t *testing.T) {
 	srv, _ := newToolsServer(t, `{"items":[{"name":"t","namespace":"team1","description":"`+long+
 		`","status":"Ready","labels":{"protocol":null,"framework":null,"type":"tool"},"workloadType":null,"createdAt":null}]}`)
 
-	out, err := execute(t, "--server", srv.URL+"/api/v1/", "tools", "list", "-n", "team1")
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "tools", "--namespace", "team1", "list")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestToolsListTableTruncatesDescription(t *testing.T) {
 func TestToolsListJSON(t *testing.T) {
 	srv, _ := newToolsServer(t, toolsBody)
 
-	out, err := execute(t, "--server", srv.URL+"/api/v1/", "tools", "list", "--namespaces", "team1", "--json")
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "tools", "--namespace", "team1", "list", "--json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestToolsListJSON(t *testing.T) {
 	}
 }
 
-func TestToolsListDiscoversNamespacesWhenEmpty(t *testing.T) {
+func TestToolsListAllNamespacesDiscovers(t *testing.T) {
 	var toolsQueried []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -123,7 +123,7 @@ func TestToolsListDiscoversNamespacesWhenEmpty(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	out, err := execute(t, "--server", srv.URL+"/api/v1/", "tools", "list")
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "tools", "list", "--all-namespaces")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -141,18 +141,42 @@ func TestToolsListDiscoversNamespacesWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestToolsListMultipleNamespacesJSON(t *testing.T) {
+func TestToolsListDefaultUsesSingleNamespaceNoDiscovery(t *testing.T) {
+	// Errors if /namespaces is hit, proving no discovery without --all-namespaces.
+	var queriedNS string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/tools" {
 			t.Errorf("unexpected path %q", r.URL.Path)
 		}
+		queriedNS = r.URL.Query().Get("namespace")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"items":[]}`))
 	}))
 	t.Cleanup(srv.Close)
 
-	out, err := execute(t, "--server", srv.URL+"/api/v1/",
-		"tools", "list", "--json", "--namespaces", "team1", "--namespaces", "team2")
+	if _, err := execute(t, "--server", srv.URL+"/api/v1/", "tools", "--namespace", "team1", "list"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if queriedNS != "team1" {
+		t.Errorf("queried namespace = %q, want team1", queriedNS)
+	}
+}
+
+func TestToolsListAllNamespacesJSONSeparator(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v1/namespaces":
+			_, _ = w.Write([]byte(`{"namespaces": ["team1", "team2"]}`))
+		case "/api/v1/tools":
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		default:
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "tools", "list", "--all-namespaces", "--json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -165,7 +189,7 @@ func TestToolsListMultipleNamespacesJSON(t *testing.T) {
 func TestToolsListEmpty(t *testing.T) {
 	srv, _ := newToolsServer(t, `{"items": []}`)
 
-	out, err := execute(t, "--server", srv.URL+"/api/v1/", "tools", "list", "--namespaces", "team1")
+	out, err := execute(t, "--server", srv.URL+"/api/v1/", "tools", "--namespace", "team1", "list")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
