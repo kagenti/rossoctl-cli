@@ -45,19 +45,26 @@ Design principles:
 
 ## Install a release
 
-Each GitHub release ships prebuilt binaries (see `.github/workflows/release.yml`).
-Download the tarball for your platform, where `OSEXT` is `uname` and `OS_ARCH`
-is `uname -m`:
+The `downloadRossoctl` script downloads the release archive for your platform
+(detected via `uname` / `uname -m`), extracts it, and installs the binary at
+`$HOME/.rossoctl/rossoctl`:
 
 ```sh
-ROSSOCTL_CLI_VERSION=v0.1.0
-OSEXT=$(uname)          # Linux or Darwin
-OS_ARCH=$(uname -m)     # x86_64 or arm64
-# Assets label arm64 as "arm64" on both OSes; Linux uname -m reports aarch64.
-[ "$OS_ARCH" = "aarch64" ] && OS_ARCH=arm64
-url="https://github.com/kagenti/rossoctl-cli/releases/download/${ROSSOCTL_CLI_VERSION}/rossoctl-${ROSSOCTL_CLI_VERSION}-${OSEXT}-${OS_ARCH}.tar.gz"
-curl -fsSL "$url" | tar -xz     # extracts ./rossoctl
+curl -fsSL https://raw.githubusercontent.com/kagenti/rossoctl-cli/main/downloadRossoctl | sh
 ```
+
+By default it installs the latest release; pin a version with
+`ROSSOCTL_CLI_VERSION`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kagenti/rossoctl-cli/main/downloadRossoctl \
+  | ROSSOCTL_CLI_VERSION=v0.1.0 sh
+```
+
+The script prints how to add `$HOME/.rossoctl` to your `PATH`. Each release
+ships prebuilt binaries built by `.github/workflows/release.yml`; the asset
+names are `rossoctl-<version>-<uname>-<uname -m>.tar.gz` (arm64 is labeled
+`arm64` on both Linux and Darwin).
 
 ## Build from source
 
