@@ -95,6 +95,58 @@ func TestConfigCreateContextRequiresName(t *testing.T) {
 	}
 }
 
+func TestConfigCreateContextNamespace(t *testing.T) {
+	isolateHome(t)
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", "http://dev/api/v1/", "--namespace", "team1"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+
+	// The table shows a NAMESPACE column with the stored value.
+	out, err := execute(t, "config", "get-contexts")
+	if err != nil {
+		t.Fatalf("get-contexts: %v", err)
+	}
+	if !strings.Contains(out, "NAMESPACE") {
+		t.Errorf("get-contexts missing NAMESPACE column:\n%s", out)
+	}
+	for line := range strings.SplitSeq(out, "\n") {
+		if strings.Contains(line, "dev") && !strings.Contains(line, "team1") {
+			t.Errorf("dev context should show namespace team1:\n%s", out)
+		}
+	}
+
+	// The namespace is persisted in the raw config.
+	jsonOut, err := execute(t, "config", "get-contexts", "--json")
+	if err != nil {
+		t.Fatalf("get-contexts --json: %v", err)
+	}
+	if !strings.Contains(jsonOut, `"namespace": "team1"`) {
+		t.Errorf("--json output missing namespace:\n%s", jsonOut)
+	}
+}
+
+func TestConfigCreateContextNamespaceOmitted(t *testing.T) {
+	isolateHome(t)
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", "http://dev/api/v1/"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+	// Omitted namespace renders as "-" and is omitted from stored JSON.
+	out, _ := execute(t, "config", "get-contexts")
+	for line := range strings.SplitSeq(out, "\n") {
+		if strings.Contains(line, "dev") && !strings.Contains(line, "-") {
+			t.Errorf("dev context with no namespace should show '-':\n%s", out)
+		}
+	}
+	jsonOut, _ := execute(t, "config", "get-contexts", "--json")
+	if strings.Contains(jsonOut, `"namespace"`) {
+		t.Errorf("empty namespace should be omitted from JSON:\n%s", jsonOut)
+	}
+}
+
 // TestCurrentContextDrivesServer verifies that when --server is not given, the
 // current context's server (and bearer token) are used, and that an explicit
 // --server overrides the context (and drops the token).

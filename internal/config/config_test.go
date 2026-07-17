@@ -80,7 +80,7 @@ func TestSaveChmodsExistingFile(t *testing.T) {
 func TestRoundTrip(t *testing.T) {
 	path := tmpConfigPath(t)
 	cfg, _ := Load(path)
-	cfg.Upsert(Context{Name: "dev", Server: "http://dev/", BearerToken: "tok"})
+	cfg.Upsert(Context{Name: "dev", Server: "http://dev/", Namespace: "team1", BearerToken: "tok"})
 	cfg.Upsert(Context{Name: "prod", Server: "http://prod/"})
 	_ = cfg.SetCurrent("prod")
 	if err := cfg.Save(); err != nil {
@@ -98,7 +98,7 @@ func TestRoundTrip(t *testing.T) {
 		t.Fatalf("got %d contexts, want 2", len(reloaded.Contexts))
 	}
 	dev, ok := reloaded.Get("dev")
-	if !ok || dev.Server != "http://dev/" || dev.BearerToken != "tok" {
+	if !ok || dev.Server != "http://dev/" || dev.Namespace != "team1" || dev.BearerToken != "tok" {
 		t.Errorf("dev context round-trip mismatch: %+v (ok=%v)", dev, ok)
 	}
 }

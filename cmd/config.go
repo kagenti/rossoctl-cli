@@ -48,17 +48,21 @@ the default server. With --json the raw config is printed unchanged.`,
 
 		out := cmd.OutOrStdout()
 		w := tabwriter.NewWriter(out, 0, 0, 3, ' ', 0)
-		fmt.Fprintln(w, "CURRENT\tNAME\tSERVER\tTOKEN")
+		fmt.Fprintln(w, "CURRENT\tNAME\tSERVER\tNAMESPACE\tTOKEN")
 		for _, c := range cfg.Contexts {
 			marker := ""
 			if c.Name == cfg.CurrentContext {
 				marker = "*"
 			}
+			namespace := c.Namespace
+			if namespace == "" {
+				namespace = "-"
+			}
 			token := "<none>"
 			if c.BearerToken != "" {
 				token = "<set>"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", marker, c.Name, c.Server, token)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", marker, c.Name, c.Server, namespace, token)
 		}
 		return w.Flush()
 	},
@@ -90,9 +94,10 @@ var configUseContextCmd = &cobra.Command{
 // --- create-context ---
 
 var (
-	createContextName   string
-	createContextServer string
-	createContextToken  string
+	createContextName      string
+	createContextServer    string
+	createContextNamespace string
+	createContextToken     string
 )
 
 var configCreateContextCmd = &cobra.Command{
@@ -101,7 +106,8 @@ var configCreateContextCmd = &cobra.Command{
 	Long: `Create (or replace) a named context and make it the current context.
 
 --server sets the context's server URI; if omitted, the global --server value
-is used, falling back to the built-in default. --bearer-token is optional.`,
+is used, falling back to the built-in default. --namespace and --bearer-token
+are optional.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		if createContextName == "" {
@@ -120,6 +126,7 @@ is used, falling back to the built-in default. --bearer-token is optional.`,
 		cfg.Upsert(config.Context{
 			Name:        createContextName,
 			Server:      serverURI,
+			Namespace:   createContextNamespace,
 			BearerToken: createContextToken,
 		})
 		// Creating a context makes it the current one.
@@ -141,6 +148,7 @@ func init() {
 
 	configCreateContextCmd.Flags().StringVar(&createContextName, "name", "", "name of the context (required)")
 	configCreateContextCmd.Flags().StringVar(&createContextServer, "server", "", "server URI for the context (default: global --server or built-in default)")
+	configCreateContextCmd.Flags().StringVar(&createContextNamespace, "namespace", "", "optional default namespace for the context")
 	configCreateContextCmd.Flags().StringVar(&createContextToken, "bearer-token", "", "optional bearer token for the context")
 
 	configCmd.AddCommand(

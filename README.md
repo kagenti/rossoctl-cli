@@ -61,7 +61,7 @@ rossoctl agents --help
 # Manage contexts (persisted in ~/.rossoctl/config.yaml, kubectl-style)
 rossoctl config get-contexts                    # created + seeded on first use
 rossoctl config create-context --name dev \
-    --server http://my-host:8080/api/v1/ --bearer-token <token>   # becomes current
+    --server http://my-host:8080/api/v1/ --namespace team1 --bearer-token <token>   # becomes current
 rossoctl config use-context dev
 rossoctl login --token <token>                  # set the token on the current context directly
 rossoctl login                                  # or: OAuth device flow against the server's Keycloak
@@ -93,7 +93,8 @@ rossoctl -v agents list
 ### Contexts and server resolution
 
 Contexts are persisted in `~/.rossoctl/config.yaml` (directory `0700`, file
-`0600`). Each context has a name, a server URI, and an optional bearer token.
+`0600`). Each context has a name, a server URI, an optional namespace, and an
+optional bearer token.
 The file is created lazily — the first command that needs it seeds a context
 from the default server (`http://kagenti-ui.localtest.me:8080/api/v1/`) and
 makes it current. Creating a context makes it current.
