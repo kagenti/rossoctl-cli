@@ -61,6 +61,7 @@ rossoctl config get-contexts                    # created + seeded on first use
 rossoctl config create-context --name dev \
     --server http://my-host:8080/api/v1/ --bearer-token <token>   # becomes current
 rossoctl config use-context dev
+rossoctl login --token <token>                  # set the token on the current context
 
 # Show the server's auth configuration (GET <server>/auth/config)
 rossoctl auth-config
@@ -104,6 +105,6 @@ The command tree mirrors the subcommands referenced in the Rossoctl docs
 (`agents`, `config`, `gateway`, `images`, `namespaces`, `skills`, `tools`, `ui`,
 plus `auth-config` and the top-level `apply`, `install`, `login`, `status`,
 `uninstall`). The
-`config` context commands, `auth-config`, `agents list`, `tools list`, and
-`namespaces list` are implemented; other leaf commands currently print
+`config` context commands, `login`, `auth-config`, `agents list`, `tools list`,
+and `namespaces list` are implemented; other leaf commands currently print
 `UNIMPLEMENTED` as a placeholder.

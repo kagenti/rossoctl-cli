@@ -116,7 +116,7 @@ func TestVersionCommand(t *testing.T) {
 var unimplementedCommands = [][]string{
 	{"apply"},
 	{"install"},
-	{"login"},
+	// "login" is implemented (sets the current context's token); tested in login_test.go.
 	{"status"},
 	{"uninstall"},
 	{"agents", "add-skill"},
