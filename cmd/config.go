@@ -144,20 +144,28 @@ are optional.`,
 
 // --- set-context ---
 
-var setContextNamespace string
+var (
+	setContextNamespace string
+	setContextName      string
+)
 
 var configSetContextCmd = &cobra.Command{
 	Use:   "set-context",
-	Short: "Set the namespace on the current context",
-	Long: `Set the namespace on the current context.
+	Short: "Update the current context",
+	Long: `Update the current context.
 
-The value is checked against the namespaces reported by the server
-(GET <server>/namespaces); if it is not among them a warning is printed, but
-the namespace is set regardless.`,
+--namespace sets its namespace (checked against GET <server>/namespaces; a
+warning is printed if it is not among them, but it is set regardless).
+--server replaces its server URI. --name renames the current context, updating
+the current-context reference to the new name. At least one of these must be
+given.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		if !cmd.Flags().Changed("namespace") {
-			return fmt.Errorf("--namespace is required")
+		changedNamespace := cmd.Flags().Changed("namespace")
+		changedServer := cmd.Flags().Changed("server")
+		changedName := cmd.Flags().Changed("name")
+		if !changedNamespace && !changedServer && !changedName {
+			return fmt.Errorf("nothing to do: give at least one of --namespace, --server, or --name")
 		}
 
 		cfg, err := loadConfig()
@@ -168,36 +176,51 @@ the namespace is set regardless.`,
 		if !ok {
 			return fmt.Errorf("no current context")
 		}
+		oldName := cur.Name
 
-		// Warn (but don't fail) if the namespace is not one the server knows.
-		// serverKnowsNamespace resolves the server the same way other commands
-		// do, so an explicit --server (below) is used for this check too.
-		if known, err := serverKnowsNamespace(cmd, setContextNamespace); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(),
-				"Warning: could not verify namespace against the server: %v\n", err)
-		} else if !known {
-			fmt.Fprintf(cmd.ErrOrStderr(),
-				"Warning: namespace %q is not among the server's namespaces\n", setContextNamespace)
+		if changedNamespace {
+			// Warn (but don't fail) if the namespace is not one the server
+			// knows. serverKnowsNamespace resolves the server the same way
+			// other commands do, so an explicit --server is used for this too.
+			if known, err := serverKnowsNamespace(cmd, setContextNamespace); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"Warning: could not verify namespace against the server: %v\n", err)
+			} else if !known {
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"Warning: namespace %q is not among the server's namespaces\n", setContextNamespace)
+			}
+			cur.Namespace = setContextNamespace
 		}
 
-		cur.Namespace = setContextNamespace
 		// Replace the context's server only when --server was given explicitly
 		// (not left at its default).
-		if cmd.Flags().Changed("server") {
+		if changedServer {
 			cur.Server = server
+		}
+
+		// Rename last so the earlier cur.* mutations land on the same context;
+		// Rename updates the current-context reference when it applies.
+		if changedName {
+			if err := cfg.Rename(oldName, setContextName); err != nil {
+				return err
+			}
 		}
 
 		if err := cfg.Save(); err != nil {
 			return err
 		}
-		if cmd.Flags().Changed("server") {
-			cmd.Printf("Set namespace %q and server %q on context %q.\n",
-				setContextNamespace, cur.Server, cur.Name)
-		} else {
-			cmd.Printf("Set namespace %q on context %q.\n", setContextNamespace, cur.Name)
-		}
+		cmd.Printf("Updated context %q.\n", finalContextName(oldName, changedName, setContextName))
 		return nil
 	},
+}
+
+// finalContextName returns the context's name after set-context: the new name
+// when renamed, otherwise the original.
+func finalContextName(oldName string, renamed bool, newName string) string {
+	if renamed {
+		return newName
+	}
+	return oldName
 }
 
 // serverKnowsNamespace reports whether ns is among the namespaces the server
@@ -224,7 +247,8 @@ func init() {
 	configCreateContextCmd.Flags().StringVar(&createContextNamespace, "namespace", "", "optional default namespace for the context")
 	configCreateContextCmd.Flags().StringVar(&createContextToken, "bearer-token", "", "optional bearer token for the context")
 
-	configSetContextCmd.Flags().StringVar(&setContextNamespace, "namespace", "", "namespace to set on the current context (required)")
+	configSetContextCmd.Flags().StringVar(&setContextNamespace, "namespace", "", "namespace to set on the current context")
+	configSetContextCmd.Flags().StringVar(&setContextName, "name", "", "rename the current context to this name")
 
 	configCmd.AddCommand(
 		configGetContextsCmd,

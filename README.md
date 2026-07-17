@@ -65,6 +65,7 @@ rossoctl config create-context --name dev \
 rossoctl config use-context dev
 rossoctl config set-context --namespace team1   # set namespace on current context (warns if unknown to server)
 rossoctl config set-context --namespace team1 --server http://other:8080/api/v1/   # also replace the server
+rossoctl config set-context --name prod          # rename the current context (updates the current reference)
 rossoctl login --token <token>                  # set the token on the current context directly
 rossoctl login                                  # or: OAuth device flow against the server's Keycloak
 
