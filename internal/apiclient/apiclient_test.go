@@ -99,6 +99,102 @@ func TestListTools(t *testing.T) {
 	}
 }
 
+func TestDeleteTool(t *testing.T) {
+	var gotMethod, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"success": true, "message": "deleted"}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/"}
+	resp, err := c.DeleteTool(context.Background(), "team1", "weather-mcp")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method = %q, want DELETE", gotMethod)
+	}
+	if gotPath != "/api/v1/tools/team1/weather-mcp" {
+		t.Errorf("path = %q, want /api/v1/tools/team1/weather-mcp", gotPath)
+	}
+	if !resp.Success || resp.Message != "deleted" {
+		t.Errorf("unexpected response: %+v", resp)
+	}
+}
+
+func TestCreateTool(t *testing.T) {
+	var gotMethod, gotPath, gotContentType string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotContentType = r.Header.Get("Content-Type")
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = w.Write([]byte(`{"success": true, "name": "weather-mcp", "namespace": "team1", "message": "Tool created"}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/"}
+	req := &CreateToolRequest{
+		Name:             "weather-mcp",
+		Namespace:        "team1",
+		DeploymentMethod: "image",
+		WorkloadType:     "deployment",
+		ContainerImage:   "ghcr.io/x/y:latest",
+		ImagePullSecret:  "regcred",
+		EnvVars:          []EnvVar{{Name: "FOO", Value: "bar"}},
+	}
+	resp, err := c.CreateTool(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %q, want POST", gotMethod)
+	}
+	if gotPath != "/api/v1/tools" {
+		t.Errorf("path = %q, want /api/v1/tools", gotPath)
+	}
+	if gotContentType != "application/json" {
+		t.Errorf("content-type = %q, want application/json", gotContentType)
+	}
+	if gotBody["deploymentMethod"] != "image" || gotBody["containerImage"] != "ghcr.io/x/y:latest" {
+		t.Errorf("unexpected body: %+v", gotBody)
+	}
+	envVars, ok := gotBody["envVars"].([]any)
+	if !ok || len(envVars) != 1 {
+		t.Fatalf("envVars not sent correctly: %+v", gotBody["envVars"])
+	}
+	if !resp.Success || resp.Message != "Tool created" {
+		t.Errorf("unexpected response: %+v", resp)
+	}
+}
+
+func TestCreateToolOmitsEmptyOptionals(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = w.Write([]byte(`{"success": true}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/"}
+	_, err := c.CreateTool(context.Background(), &CreateToolRequest{
+		Name: "a", Namespace: "team1", DeploymentMethod: "image", WorkloadType: "deployment",
+		ContainerImage: "img",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, k := range []string{"imagePullSecret", "gitUrl", "gitPath", "gitBranch", "envVars"} {
+		if _, present := gotBody[k]; present {
+			t.Errorf("empty field %q should be omitted, body: %+v", k, gotBody)
+		}
+	}
+}
+
 func TestListAgents(t *testing.T) {
 	var gotPath, gotQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -78,21 +78,31 @@ func executeSplit(t *testing.T, args ...string) (stdout, stderr string, err erro
 	return outBuf.String(), errBuf.String(), err
 }
 
+// flagSliceDefaults snapshots the initial value of each slice flag (keyed by
+// flag pointer) the first time resetFlags sees it, so subsequent resets can
+// restore the real registered default. This is needed because a StringSlice's
+// DefValue is a bracketed string that does not round-trip through Value.Set.
+var flagSliceDefaults = map[*pflag.Flag][]string{}
+
 // resetFlags restores flag state between Execute calls in the same test
 // binary. Flag values are stored in package-level globals bound once in
 // init(); Cobra never resets them, so a flag set by one test would otherwise
 // leak into the next.
 //
-// Scalar flags are restored via Set(DefValue), but slice flags (pflag
-// StringSlice) need SliceValue.Replace: their Set appends after the first call
-// and Set("[]") inserts a literal element rather than clearing. Every flag's
-// Changed bit is then cleared.
+// Scalar flags are restored via Set(DefValue). Slice flags (pflag StringSlice)
+// need SliceValue.Replace with the snapshotted default: their Set appends after
+// the first call, and neither Set("[]") nor Set(DefValue) round-trips. Every
+// flag's Changed bit is then cleared.
 func resetFlags(cmd *cobra.Command) {
 	clear := func(f *pflag.Flag) {
 		if sv, isSlice := f.Value.(pflag.SliceValue); isSlice {
-			// Replace resets the value type's internal state (unlike
-			// Set("[]"), which appends a literal element).
-			_ = sv.Replace([]string{})
+			def, seen := flagSliceDefaults[f]
+			if !seen {
+				// First sight: this is the registered default.
+				def = append([]string(nil), sv.GetSlice()...)
+				flagSliceDefaults[f] = def
+			}
+			_ = sv.Replace(def)
 		} else {
 			_ = f.Value.Set(f.DefValue)
 		}
@@ -141,10 +151,8 @@ var unimplementedCommands = [][]string{
 	{"images", "preload"},
 	{"skills", "list"},
 	{"skills", "publish"},
-	// "tools list" is implemented (fetches GET /tools) and tested separately;
-	// "tools import" has from-image/from-source subcommands (tested in
-	// tools_import_test.go).
-	{"tools", "delete"},
+	// tools list/get/delete and import from-image are implemented; tested in
+	// tools_test.go / tools_import_test.go.
 	{"ui", "open"},
 }
 

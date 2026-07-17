@@ -349,6 +349,67 @@ func (c *Client) ListTools(ctx context.Context, namespace string) (*ToolListResp
 	return &resp, nil
 }
 
+// DeleteTool issues DELETE /tools/<namespace>/<name>.
+func (c *Client) DeleteTool(ctx context.Context, namespace, name string) (*DeleteResponse, error) {
+	path := "tools/" + url.PathEscape(namespace) + "/" + url.PathEscape(name)
+
+	var resp DeleteResponse
+	if err := c.deleteJSON(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// CreateServicePort mirrors the backend's ServicePort model (an entry in a
+// CreateToolRequest's servicePorts). It is a distinct type from ServicePort
+// (used for GET responses) because the request form has an integer
+// targetPort and an explicit protocol.
+type CreateServicePort struct {
+	Name       string `json:"name"`
+	Port       int    `json:"port"`
+	TargetPort int    `json:"targetPort"`
+	Protocol   string `json:"protocol"`
+}
+
+// CreateToolRequest is the subset of the backend's CreateToolRequest that the
+// CLI populates. Fields the server defaults are omitted; only what we set is
+// sent. deploymentMethod selects image vs source; workloadType selects
+// deployment|statefulset.
+type CreateToolRequest struct {
+	Name             string              `json:"name"`
+	Namespace        string              `json:"namespace"`
+	DeploymentMethod string              `json:"deploymentMethod"`
+	WorkloadType     string              `json:"workloadType"`
+	EnvVars          []EnvVar            `json:"envVars,omitempty"`
+	ServicePorts     []CreateServicePort `json:"servicePorts,omitempty"`
+
+	// Image deployment fields.
+	ContainerImage  string `json:"containerImage,omitempty"`
+	ImagePullSecret string `json:"imagePullSecret,omitempty"`
+
+	// Source build fields.
+	GitURL    string `json:"gitUrl,omitempty"`
+	GitPath   string `json:"gitPath,omitempty"`
+	GitBranch string `json:"gitBranch,omitempty"`
+}
+
+// CreateToolResponse mirrors the backend's CreateToolResponse model.
+type CreateToolResponse struct {
+	Success   bool   `json:"success"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Message   string `json:"message"`
+}
+
+// CreateTool issues POST /tools with the given request body.
+func (c *Client) CreateTool(ctx context.Context, req *CreateToolRequest) (*CreateToolResponse, error) {
+	var resp CreateToolResponse
+	if err := c.postJSON(ctx, "tools", req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // NamespaceListResponse mirrors the backend's NamespaceListResponse model.
 type NamespaceListResponse struct {
 	Namespaces []string `json:"namespaces"`
