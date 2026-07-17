@@ -235,8 +235,8 @@ func TestContextNameForServer(t *testing.T) {
 		{"/relative/path", "/relative/path"}, // no host -> raw fallback
 	}
 	for _, c := range cases {
-		if got := contextNameForServer(c.server); got != c.want {
-			t.Errorf("contextNameForServer(%q) = %q, want %q", c.server, got, c.want)
+		if got := ContextNameForServer(c.server); got != c.want {
+			t.Errorf("ContextNameForServer(%q) = %q, want %q", c.server, got, c.want)
 		}
 	}
 }

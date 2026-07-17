@@ -84,6 +84,7 @@ rossoctl config set-context --namespace team1 --server http://other:8080/api/v1/
 rossoctl config set-context --name prod          # rename the current context (updates the current reference)
 rossoctl login --token <token>                  # set the token on the current context directly
 rossoctl login                                  # or: OAuth device flow against the server's Keycloak
+rossoctl login --server http://host:8080/api/v1/ --token <token>   # target the context for that host (create if absent), make it current
 
 # Show the server's auth configuration (GET <server>/auth/config)
 rossoctl auth-config
@@ -154,13 +155,15 @@ URL, status, timing) to stderr.
 
 ### Logging in
 
-`rossoctl login --token <token>` stores a token on the current context
-directly. `rossoctl login` (no `--token`) runs the OAuth 2.0 device
+`rossoctl login --token <token>` stores a token on a context. With `--server`,
+the token is stored on the context named after that server's hostname (created
+if none exists), which becomes current; without `--server`, it is stored on the
+current context. `rossoctl login` (no `--token`) runs the OAuth 2.0 device
 authorization grant (RFC 8628): it reads `keycloak_url`, `realm`, and
 `client_id` from `GET <server>/auth/config`, requests a device code from
 Keycloak, prints a verification URL and one-time code (and best-effort opens a
 browser), polls until you authorize, and saves the resulting bearer token on
-the current context.
+the target context.
 
 The command tree mirrors the subcommands referenced in the Rossoctl docs
 (`agents`, `config`, `gateway`, `images`, `namespaces`, `skills`, `tools`, `ui`,

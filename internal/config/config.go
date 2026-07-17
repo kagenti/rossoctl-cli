@@ -171,11 +171,11 @@ func (c *Config) Rename(oldName, newName string) error {
 	return nil
 }
 
-// contextNameForServer derives a short context name from a server URI: its
+// ContextNameForServer derives a short context name from a server URI: its
 // host (without port). It falls back to the host:port, and finally to the raw
 // string, when the URI can't be parsed or has no host — so the name is never
 // empty.
-func contextNameForServer(server string) string {
+func ContextNameForServer(server string) string {
 	u, err := url.Parse(server)
 	if err != nil || u.Host == "" {
 		return server
@@ -197,7 +197,7 @@ func EnsureContext(path, defaultServer string) (*Config, error) {
 		return nil, err
 	}
 	if len(cfg.Contexts) == 0 {
-		name := contextNameForServer(defaultServer)
+		name := ContextNameForServer(defaultServer)
 		cfg.Upsert(Context{Name: name, Server: defaultServer})
 		if err := cfg.SetCurrent(name); err != nil {
 			return nil, err
