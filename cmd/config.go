@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -141,6 +142,65 @@ are optional.`,
 	},
 }
 
+// --- set-context ---
+
+var setContextNamespace string
+
+var configSetContextCmd = &cobra.Command{
+	Use:   "set-context",
+	Short: "Set the namespace on the current context",
+	Long: `Set the namespace on the current context.
+
+The value is checked against the namespaces reported by the server
+(GET <server>/namespaces); if it is not among them a warning is printed, but
+the namespace is set regardless.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		if !cmd.Flags().Changed("namespace") {
+			return fmt.Errorf("--namespace is required")
+		}
+
+		cfg, err := loadConfig()
+		if err != nil {
+			return err
+		}
+		cur, ok := cfg.Current()
+		if !ok {
+			return fmt.Errorf("no current context")
+		}
+
+		// Warn (but don't fail) if the namespace is not one the server knows.
+		if known, err := serverKnowsNamespace(cmd, setContextNamespace); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(),
+				"Warning: could not verify namespace against the server: %v\n", err)
+		} else if !known {
+			fmt.Fprintf(cmd.ErrOrStderr(),
+				"Warning: namespace %q is not among the server's namespaces\n", setContextNamespace)
+		}
+
+		cur.Namespace = setContextNamespace
+		if err := cfg.Save(); err != nil {
+			return err
+		}
+		cmd.Printf("Set namespace %q on context %q.\n", setContextNamespace, cur.Name)
+		return nil
+	},
+}
+
+// serverKnowsNamespace reports whether ns is among the namespaces the server
+// returns from GET <server>/namespaces (enabled namespaces only).
+func serverKnowsNamespace(cmd *cobra.Command, ns string) (bool, error) {
+	client, err := newClient(cmd)
+	if err != nil {
+		return false, err
+	}
+	resp, err := client.ListNamespaces(cmd.Context(), true)
+	if err != nil {
+		return false, err
+	}
+	return slices.Contains(resp.Namespaces, ns), nil
+}
+
 func init() {
 	configCmd := newGroup("config", "Manage rossoctl contexts")
 
@@ -151,10 +211,13 @@ func init() {
 	configCreateContextCmd.Flags().StringVar(&createContextNamespace, "namespace", "", "optional default namespace for the context")
 	configCreateContextCmd.Flags().StringVar(&createContextToken, "bearer-token", "", "optional bearer token for the context")
 
+	configSetContextCmd.Flags().StringVar(&setContextNamespace, "namespace", "", "namespace to set on the current context (required)")
+
 	configCmd.AddCommand(
 		configGetContextsCmd,
 		configUseContextCmd,
 		configCreateContextCmd,
+		configSetContextCmd,
 	)
 	rootCmd.AddCommand(configCmd)
 }

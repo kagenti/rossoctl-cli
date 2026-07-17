@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kagenti/rossoctl-cli/internal/config"
 )
 
 // isolateHome points HOME at a fresh temp dir for this test so the context
@@ -144,6 +146,85 @@ func TestConfigCreateContextNamespaceOmitted(t *testing.T) {
 	jsonOut, _ := execute(t, "config", "get-contexts", "--json")
 	if strings.Contains(jsonOut, `"namespace"`) {
 		t.Errorf("empty namespace should be omitted from JSON:\n%s", jsonOut)
+	}
+}
+
+// namespacesServer serves GET /namespaces with the given list, used by the
+// set-context validation tests.
+func namespacesServer(t *testing.T, namespaces ...string) *httptest.Server {
+	t.Helper()
+	quoted := make([]string, len(namespaces))
+	for i, n := range namespaces {
+		quoted[i] = `"` + n + `"`
+	}
+	body := `{"namespaces":[` + strings.Join(quoted, ",") + `]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/namespaces" {
+			t.Errorf("unexpected path %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestConfigSetContextKnownNamespace(t *testing.T) {
+	path := isolateHome(t)
+	srv := namespacesServer(t, "team1", "team2")
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", srv.URL+"/api/v1/"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+
+	_, stderr, err := executeSplit(t, "config", "set-context", "--namespace", "team1")
+	if err != nil {
+		t.Fatalf("set-context: %v", err)
+	}
+	if strings.Contains(stderr, "Warning") {
+		t.Errorf("no warning expected for a known namespace, got:\n%s", stderr)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	cur, _ := cfg.Current()
+	if cur.Namespace != "team1" {
+		t.Errorf("namespace = %q, want team1", cur.Namespace)
+	}
+}
+
+func TestConfigSetContextUnknownNamespaceWarnsButSets(t *testing.T) {
+	path := isolateHome(t)
+	srv := namespacesServer(t, "team1", "team2")
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", srv.URL+"/api/v1/"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+
+	_, stderr, err := executeSplit(t, "config", "set-context", "--namespace", "nope")
+	if err != nil {
+		t.Fatalf("set-context: %v", err)
+	}
+	if !strings.Contains(stderr, "Warning") || !strings.Contains(stderr, "nope") {
+		t.Errorf("expected a warning naming the namespace, got:\n%s", stderr)
+	}
+
+	// Set regardless of the warning.
+	cfg, _ := config.Load(path)
+	cur, _ := cfg.Current()
+	if cur.Namespace != "nope" {
+		t.Errorf("namespace = %q, want nope (set despite warning)", cur.Namespace)
+	}
+}
+
+func TestConfigSetContextRequiresNamespace(t *testing.T) {
+	isolateHome(t)
+	if _, err := execute(t, "config", "set-context"); err == nil {
+		t.Error("set-context without --namespace should error")
 	}
 }
 
