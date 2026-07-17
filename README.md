@@ -78,9 +78,13 @@ rossoctl agents list --namespaces team1,team2   # comma-separated
 rossoctl agents list -n team1 -n team2          # or repeated
 rossoctl agents list --namespaces team1,team2 --json   # each response, separated by ---
 
-# Show one agent (GET <server>/agents/<current-context-namespace>/<name>)
+# Show one agent (GET <server>/agents/<namespace>/<name>)
 rossoctl agents get orders                      # single-column text, laid out like the web detail page
 rossoctl agents get orders --json               # raw JSON
+
+# `agents --namespace` overrides the current context's namespace for any agents subcommand
+rossoctl agents --namespace team2 get orders    # -> GET /agents/team2/orders
+rossoctl agents --namespace team2 list          # list just team2 (no discovery)
 
 # List tools (GET <server>/tools) — same options as `agents list`
 rossoctl tools list

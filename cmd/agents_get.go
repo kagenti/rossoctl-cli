@@ -29,7 +29,7 @@ by the server is printed unchanged.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 
-		namespace, err := currentNamespace()
+		namespace, err := agentsNamespace()
 		if err != nil {
 			return err
 		}

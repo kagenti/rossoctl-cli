@@ -143,6 +143,33 @@ func TestAgentsGetJSON(t *testing.T) {
 	}
 }
 
+func TestAgentsGetNamespaceOverride(t *testing.T) {
+	isolateHome(t)
+
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/namespaces" {
+			_, _ = w.Write([]byte(`{"namespaces":["team1","team2"]}`))
+			return
+		}
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"metadata":{"name":"orders","namespace":"team2"},"spec":{},"status":{},"workloadType":"deployment","readyStatus":"Ready"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	// Current context namespace is team1.
+	setupAgentGetContext(t, srv)
+
+	// --namespace team2 must override the context, hitting /agents/team2/orders.
+	if _, err := execute(t, "agents", "--namespace", "team2", "get", "orders"); err != nil {
+		t.Fatalf("agents get: %v", err)
+	}
+	if gotPath != "/api/v1/agents/team2/orders" {
+		t.Errorf("requested path = %q, want /api/v1/agents/team2/orders", gotPath)
+	}
+}
+
 func TestAgentsGetRequiresNamespace(t *testing.T) {
 	isolateHome(t)
 	// Context has no namespace set.
@@ -152,6 +179,30 @@ func TestAgentsGetRequiresNamespace(t *testing.T) {
 	}
 	if _, err := execute(t, "agents", "get", "orders"); err == nil {
 		t.Error("agents get should error when the current context has no namespace")
+	}
+}
+
+func TestAgentsGetNamespaceFlagSuppliesWhenContextHasNone(t *testing.T) {
+	isolateHome(t)
+
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"metadata":{"name":"orders","namespace":"team9"},"spec":{},"status":{},"workloadType":"deployment","readyStatus":"Ready"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	// Context has NO namespace; the --namespace flag supplies it.
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", srv.URL+"/api/v1/"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+	if _, err := execute(t, "agents", "--namespace", "team9", "get", "orders"); err != nil {
+		t.Fatalf("agents get: %v", err)
+	}
+	if gotPath != "/api/v1/agents/team9/orders" {
+		t.Errorf("requested path = %q, want /api/v1/agents/team9/orders", gotPath)
 	}
 }
 

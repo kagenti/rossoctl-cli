@@ -15,7 +15,21 @@ import (
 var (
 	agentsListJSON       bool
 	agentsListNamespaces []string
+
+	// agentsNamespaceFlag backs the persistent --namespace flag on the agents
+	// group. When set it overrides the current context's namespace for the
+	// agents subcommands.
+	agentsNamespaceFlag string
 )
+
+// agentsNamespace returns the namespace the agents subcommands should use:
+// the --namespace flag when given, otherwise the current context's namespace.
+func agentsNamespace() (string, error) {
+	if agentsNamespaceFlag != "" {
+		return agentsNamespaceFlag, nil
+	}
+	return currentNamespace()
+}
 
 var agentsListCmd = &cobra.Command{
 	Use:   "list",
@@ -38,11 +52,14 @@ unchanged, separated by a line containing "---".`,
 			return err
 		}
 
-		// When --namespaces is empty, discover the namespaces to query via
-		// the same mechanism as `namespaces list` (GET /namespaces) and list
-		// agents in each, rather than falling back to a single default-
-		// namespace request.
+		// Namespace selection, in order of precedence:
+		//   1. --namespaces (explicit set, possibly several)
+		//   2. the group --namespace override (a single namespace)
+		//   3. discovery via GET /namespaces (list agents across all)
 		namespaces := agentsListNamespaces
+		if len(namespaces) == 0 && agentsNamespaceFlag != "" {
+			namespaces = []string{agentsNamespaceFlag}
+		}
 		if len(namespaces) == 0 {
 			nsResp, err := client.ListNamespaces(cmd.Context(), true)
 			if err != nil {
@@ -142,6 +159,11 @@ func truncate(s string) string {
 
 func init() {
 	agentsCmd := newGroup("agents", "Manage agents")
+
+	// Persistent so every agents subcommand inherits it. No -n shorthand: that
+	// belongs to `agents list --namespaces`.
+	agentsCmd.PersistentFlags().StringVar(&agentsNamespaceFlag, "namespace", "",
+		"namespace for agents subcommands (overrides the current context's namespace)")
 
 	agentsListCmd.Flags().BoolVar(&agentsListJSON, "json", false, "print the raw JSON response unchanged")
 	agentsListCmd.Flags().StringSliceVarP(&agentsListNamespaces, "namespaces", "n", nil, "namespaces to list agents in (repeatable or comma-separated; default: server default)")
