@@ -89,9 +89,11 @@ detect_arch() {
 
 # ---- version resolution ----------------------------------------------------
 
-# latest_version resolves the latest release tag by following the redirect
-# that GitHub issues from /releases/latest to /releases/tag/<tag>.
-latest_version() {
+# latest_release_tag resolves the newest full (non-prerelease) release tag by
+# following the redirect that GitHub issues from /releases/latest to
+# /releases/tag/<tag>. Echoes nothing (and succeeds) when there is no such
+# release, e.g. when the repo has only prereleases.
+latest_release_tag() {
 	# The redirect Location ends in the tag; we don't download the body.
 	if command -v curl >/dev/null 2>&1; then
 		# -I: headers only; -w prints the final effective URL.
@@ -108,10 +110,32 @@ latest_version() {
 
 	tag="${url##*/tag/}"
 	tag="${tag%%[?#]*}" # strip any query/fragment
-	if [ -z "$tag" ] || [ "$tag" = "$url" ]; then
-		# /releases/latest only points at the newest non-prerelease; if the
-		# repo has only prereleases the redirect lands on the releases list.
-		fatal "could not resolve the latest release (there may be no full releases yet). Set ROSSOCTL_CLI_VERSION to a specific tag, e.g. ROSSOCTL_CLI_VERSION=v0.1.0"
+	# /releases/latest only points at the newest non-prerelease; if the repo
+	# has none the redirect lands on the releases list and $tag == $url.
+	[ -n "$tag" ] && [ "$tag" != "$url" ] && printf '%s\n' "$tag"
+}
+
+# newest_release_tag resolves the newest release tag *including* prereleases by
+# reading the releases-list API, which returns releases newest-first. Echoes
+# the first "tag_name" value. Echoes nothing (and succeeds) when there are no
+# releases at all.
+newest_release_tag() {
+	# One release object per API entry; grab the first tag_name field.
+	http_get "https://api.github.com/repos/${REPO}/releases?per_page=1" |
+		sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
+		head -1
+}
+
+# latest_version resolves a release tag to install: the newest full release if
+# one exists, otherwise the newest release including prereleases.
+latest_version() {
+	tag="$(latest_release_tag)"
+	if [ -z "$tag" ]; then
+		# No full release; fall back to the newest prerelease.
+		tag="$(newest_release_tag)"
+	fi
+	if [ -z "$tag" ]; then
+		fatal "could not resolve a release to install (the repo may have no releases yet). Set ROSSOCTL_CLI_VERSION to a specific tag, e.g. ROSSOCTL_CLI_VERSION=v0.1.0"
 	fi
 	printf '%s\n' "$tag"
 }

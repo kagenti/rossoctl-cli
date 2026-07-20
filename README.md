@@ -2,6 +2,29 @@
 
 A command-line interface for Rossoctl, built with [Cobra](https://github.com/spf13/cobra).
 
+## Install a release
+
+The `downloadRossoctl` script downloads the release archive for your platform
+(detected via `uname` / `uname -m`), extracts it, and installs the binary at
+`$HOME/.rossoctl/rossoctl`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kagenti/rossoctl-cli/main/downloadRossoctl | sh
+```
+
+By default it installs the latest release; pin a version with
+`ROSSOCTL_CLI_VERSION`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kagenti/rossoctl-cli/main/downloadRossoctl \
+  | ROSSOCTL_CLI_VERSION=v0.1.0 sh
+```
+
+The script prints how to add `$HOME/.rossoctl` to your `PATH`. Each release
+ships prebuilt binaries built by `.github/workflows/release.yml`; the asset
+names are `rossoctl-<version>-<uname>-<uname -m>.tar.gz` (arm64 is labeled
+`arm64` on both Linux and Darwin).
+
 ## Layout
 
 This project follows the standard Go CLI layout:
@@ -42,29 +65,6 @@ Design principles:
 - **`internal/` holds the real logic** — packages there are free of Cobra and
   of I/O, so they can be unit-tested directly. `internal/` also prevents other
   modules from importing this code.
-
-## Install a release
-
-The `downloadRossoctl` script downloads the release archive for your platform
-(detected via `uname` / `uname -m`), extracts it, and installs the binary at
-`$HOME/.rossoctl/rossoctl`:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/kagenti/rossoctl-cli/main/downloadRossoctl | sh
-```
-
-By default it installs the latest release; pin a version with
-`ROSSOCTL_CLI_VERSION`:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/kagenti/rossoctl-cli/main/downloadRossoctl \
-  | ROSSOCTL_CLI_VERSION=v0.1.0 sh
-```
-
-The script prints how to add `$HOME/.rossoctl` to your `PATH`. Each release
-ships prebuilt binaries built by `.github/workflows/release.yml`; the asset
-names are `rossoctl-<version>-<uname>-<uname -m>.tar.gz` (arm64 is labeled
-`arm64` on both Linux and Darwin).
 
 ## Build from source
 
