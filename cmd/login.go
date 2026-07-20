@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kagenti/rossoctl-cli/internal/apiclient"
 	"github.com/kagenti/rossoctl-cli/internal/config"
 	"github.com/kagenti/rossoctl-cli/internal/deviceflow"
 )
@@ -72,13 +73,47 @@ until you authorize.`,
 		}
 
 		target.BearerToken = token
+
+		// If the context has no namespace yet, pick the first one the server
+		// reports (using the token we just obtained). This is best-effort: a
+		// failure to list, or a server with no namespaces, leaves the namespace
+		// blank without failing the login.
+		if target.Namespace == "" {
+			if ns := firstNamespace(cmd, target); ns != "" {
+				target.Namespace = ns
+			}
+		}
+
 		if err := cfg.Save(); err != nil {
 			return err
 		}
 
-		cmd.Printf("Logged in; token set on context %q.\n", target.Name)
+		if target.Namespace != "" {
+			cmd.Printf("Logged in; token set on context %q (namespace %q).\n", target.Name, target.Namespace)
+		} else {
+			cmd.Printf("Logged in; token set on context %q.\n", target.Name)
+		}
 		return nil
 	},
+}
+
+// firstNamespace returns the first namespace the target context's server
+// reports, or "" if it cannot be determined (list error or none available).
+// It builds its own client from the target so the just-obtained token is used
+// regardless of how the effective server would otherwise resolve.
+func firstNamespace(cmd *cobra.Command, target *config.Context) string {
+	client := &apiclient.Client{BaseURL: target.Server, BearerToken: target.BearerToken}
+	if verbose {
+		errOut := cmd.ErrOrStderr()
+		client.Logf = func(format string, args ...any) {
+			fmt.Fprintf(errOut, format+"\n", args...)
+		}
+	}
+	resp, err := client.ListNamespaces(cmd.Context(), true)
+	if err != nil || len(resp.Namespaces) == 0 {
+		return ""
+	}
+	return resp.Namespaces[0]
 }
 
 // deviceLogin runs the OAuth device authorization flow against the server's
