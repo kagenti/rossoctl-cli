@@ -1,0 +1,175 @@
+#!/bin/sh
+# downloadRossoctl — install the rossoctl CLI.
+#
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/kagenti/rossoctl-cli/main/downloadRossoctl | sh
+#
+# Downloads the release archive matching this system's OS (`uname`) and
+# architecture (`uname -m`), extracts it into a temporary directory, and
+# installs the binary at $HOME/.rossoctl/rossoctl (chmod +x).
+#
+# Environment:
+#   ROSSOCTL_CLI_VERSION   release tag to install (default: latest release)
+#
+# The whole script is wrapped in a main() that is only invoked on the last
+# line, so a truncated download piped into sh will not execute a partial
+# script.
+
+set -eu
+
+REPO="kagenti/rossoctl-cli"
+INSTALL_DIR="${HOME}/.rossoctl"
+INSTALL_PATH="${INSTALL_DIR}/rossoctl"
+
+# ---- helpers ---------------------------------------------------------------
+
+log() { printf '%s\n' "$*"; }
+err() { printf 'error: %s\n' "$*" >&2; }
+
+# fatal prints a message and exits non-zero.
+fatal() {
+	err "$*"
+	exit 1
+}
+
+# need checks that a command exists.
+need() {
+	command -v "$1" >/dev/null 2>&1 || fatal "required command not found: $1"
+}
+
+# http_get URL -> writes the response body to stdout, following redirects.
+# Uses curl if available, otherwise wget.
+http_get() {
+	if command -v curl >/dev/null 2>&1; then
+		curl -fsSL "$1"
+	elif command -v wget >/dev/null 2>&1; then
+		wget -qO- "$1"
+	else
+		fatal "need curl or wget to download files"
+	fi
+}
+
+# http_download URL OUTFILE -> saves the URL to OUTFILE, following redirects,
+# failing on HTTP errors.
+http_download() {
+	url="$1"
+	out="$2"
+	if command -v curl >/dev/null 2>&1; then
+		curl -fsSL -o "$out" "$url"
+	elif command -v wget >/dev/null 2>&1; then
+		wget -qO "$out" "$url"
+	else
+		fatal "need curl or wget to download files"
+	fi
+}
+
+# ---- platform detection ----------------------------------------------------
+
+# detect_os echoes the OS token used in release asset names (a `uname` value):
+# Linux or Darwin.
+detect_os() {
+	os="$(uname)"
+	case "$os" in
+	Linux | Darwin) printf '%s\n' "$os" ;;
+	*) fatal "unsupported OS: $os (supported: Linux, Darwin)" ;;
+	esac
+}
+
+# detect_arch echoes the architecture token used in release asset names (a
+# `uname -m` value): x86_64 or arm64. Linux reports arm64 as aarch64, which is
+# normalized to arm64 to match the release asset labels.
+detect_arch() {
+	arch="$(uname -m)"
+	case "$arch" in
+	x86_64 | amd64) printf 'x86_64\n' ;;
+	arm64 | aarch64) printf 'arm64\n' ;;
+	*) fatal "unsupported architecture: $arch (supported: x86_64, arm64)" ;;
+	esac
+}
+
+# ---- version resolution ----------------------------------------------------
+
+# latest_version resolves the latest release tag by following the redirect
+# that GitHub issues from /releases/latest to /releases/tag/<tag>.
+latest_version() {
+	# The redirect Location ends in the tag; we don't download the body.
+	if command -v curl >/dev/null 2>&1; then
+		# -I: headers only; -w prints the final effective URL.
+		url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+			"https://github.com/${REPO}/releases/latest")"
+	elif command -v wget >/dev/null 2>&1; then
+		# wget prints the redirect chain on stderr with --max-redirect=0.
+		url="$(wget -q --max-redirect=0 -O /dev/null \
+			"https://github.com/${REPO}/releases/latest" 2>&1 |
+			sed -n 's/^Location: *\([^ ]*\).*/\1/p' | tail -1)"
+	else
+		fatal "need curl or wget to resolve the latest version"
+	fi
+
+	tag="${url##*/tag/}"
+	tag="${tag%%[?#]*}" # strip any query/fragment
+	if [ -z "$tag" ] || [ "$tag" = "$url" ]; then
+		# /releases/latest only points at the newest non-prerelease; if the
+		# repo has only prereleases the redirect lands on the releases list.
+		fatal "could not resolve the latest release (there may be no full releases yet). Set ROSSOCTL_CLI_VERSION to a specific tag, e.g. ROSSOCTL_CLI_VERSION=v0.1.0"
+	fi
+	printf '%s\n' "$tag"
+}
+
+# ---- main ------------------------------------------------------------------
+
+main() {
+	need uname
+	need tar
+	need mktemp
+
+	os="$(detect_os)"
+	arch="$(detect_arch)"
+
+	version="${ROSSOCTL_CLI_VERSION:-}"
+	if [ -z "$version" ]; then
+		log "Resolving latest rossoctl release..."
+		version="$(latest_version)"
+	fi
+
+	archive="rossoctl-${version}-${os}-${arch}.tar.gz"
+	url="https://github.com/${REPO}/releases/download/${version}/${archive}"
+
+	# Work in a private temp dir, cleaned up on any exit.
+	tmp="$(mktemp -d "${TMPDIR:-/tmp}/rossoctl.XXXXXX")" || fatal "could not create temp dir"
+	trap 'rm -rf "$tmp"' EXIT INT TERM
+
+	log "Downloading ${url}"
+	http_download "$url" "${tmp}/${archive}" ||
+		fatal "download failed: ${url}"
+
+	log "Extracting..."
+	tar -xzf "${tmp}/${archive}" -C "$tmp" ||
+		fatal "failed to extract ${archive}"
+
+	[ -f "${tmp}/rossoctl" ] ||
+		fatal "archive did not contain a 'rossoctl' binary"
+
+	# Install: create the dir, move the binary into place, make it executable.
+	mkdir -p "$INSTALL_DIR"
+	# mv across filesystems (tmp -> home) is handled by mv itself.
+	mv -f "${tmp}/rossoctl" "$INSTALL_PATH"
+	chmod +x "$INSTALL_PATH"
+
+	log ""
+	log "Installed rossoctl ${version} to ${INSTALL_PATH}"
+
+	# PATH hint (don't edit shell rc files).
+	case ":${PATH}:" in
+	*":${INSTALL_DIR}:"*)
+		log "It is on your PATH; run: rossoctl version"
+		;;
+	*)
+		log "Add it to your PATH, e.g.:"
+		log "  export PATH=\"${INSTALL_DIR}:\$PATH\""
+		log "Then run: rossoctl version"
+		;;
+	esac
+}
+
+main "$@"
