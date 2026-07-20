@@ -23,14 +23,14 @@ const (
 	filePerm os.FileMode = 0o600
 )
 
-// Type is the kind of backend a Context targets: a live Kubernetes-backed
-// Rossoctl API server ("k8s") or a Cortex file-backed client ("cortex").
+// Type is the kind of backend a Context targets: a live Rossoctl API server
+// ("api") or a Cortex file-backed client ("cortex").
 type Type string
 
 const (
-	// TypeK8s is a context served by the Rossoctl API against a Kubernetes
-	// cluster.
-	TypeK8s Type = "k8s"
+	// TypeAPI is a context served by the Rossoctl HTTP API (backed by a
+	// Kubernetes cluster).
+	TypeAPI Type = "api"
 	// TypeCortex is a context served by a local Cortex file client.
 	TypeCortex Type = "cortex"
 )
@@ -232,7 +232,7 @@ func EnsureContext(path, defaultServer string) (*Config, error) {
 	}
 	if len(cfg.Contexts) == 0 {
 		name := ContextNameForServer(defaultServer)
-		cfg.Upsert(Context{Name: name, Type: TypeK8s, Server: defaultServer})
+		cfg.Upsert(Context{Name: name, Type: TypeAPI, Server: defaultServer})
 		if err := cfg.SetCurrent(name); err != nil {
 			return nil, err
 		}

@@ -14,7 +14,7 @@ func TestNewClientDispatchesOnType(t *testing.T) {
 		ctxType config.Type
 		want    string // "http" or "file"
 	}{
-		{"k8s", config.TypeK8s, "http"},
+		{"api", config.TypeAPI, "http"},
 		{"cortex", config.TypeCortex, "file"},
 		{"empty defaults to http", "", "http"},
 	}
@@ -36,7 +36,7 @@ func TestNewClientDispatchesOnType(t *testing.T) {
 }
 
 func TestNewClientCarriesContextFields(t *testing.T) {
-	ctx := &config.Context{Type: config.TypeK8s, Server: "http://api/", BearerToken: "tok"}
+	ctx := &config.Context{Type: config.TypeAPI, Server: "http://api/", BearerToken: "tok"}
 	c, ok := NewClient(ctx).(*apiclient.Client)
 	if !ok {
 		t.Fatalf("expected *apiclient.Client, got %T", c)

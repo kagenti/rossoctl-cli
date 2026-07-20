@@ -70,8 +70,8 @@ an empty list is shown. With --json the raw config is printed unchanged.`,
 			typ := string(c.Type)
 			if typ == "" {
 				// Contexts written before the type field existed are treated as
-				// k8s, the historical default.
-				typ = string(config.TypeK8s)
+				// api, the historical default.
+				typ = string(config.TypeAPI)
 			}
 			namespace := c.Namespace
 			if namespace == "" {
@@ -182,7 +182,7 @@ are optional.`,
 		}
 		cfg.Upsert(config.Context{
 			Name:        createContextName,
-			Type:        config.TypeK8s,
+			Type:        config.TypeAPI,
 			Server:      serverURI,
 			Namespace:   createContextNamespace,
 			BearerToken: createContextToken,

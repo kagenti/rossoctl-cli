@@ -120,14 +120,14 @@ func TestCortexContextOverrideMustExist(t *testing.T) {
 func TestCortexContextOverrideWrongType(t *testing.T) {
 	isolateHome(t)
 
-	// Create a k8s context, then try to drive cortex against it.
+	// Create an api context, then try to drive cortex against it.
 	if _, err := execute(t, "config", "create-context",
-		"--name", "k8sctx", "--server", "http://x/api/v1/"); err != nil {
+		"--name", "apictx", "--server", "http://x/api/v1/"); err != nil {
 		t.Fatalf("create-context: %v", err)
 	}
-	_, err := execute(t, "cortex", "status", "--context", "k8sctx")
+	_, err := execute(t, "cortex", "status", "--context", "apictx")
 	if err == nil {
-		t.Fatal("cortex status against a k8s context should error")
+		t.Fatal("cortex status against an api context should error")
 	}
 	if !strings.Contains(err.Error(), string(config.TypeCortex)) {
 		t.Errorf("error should mention the cortex type: %v", err)

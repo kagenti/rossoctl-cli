@@ -130,10 +130,10 @@ func currentNamespace() (string, error) {
 }
 
 // newClient builds a Rossoctl backend for the effective context, delegating
-// construction (and the k8s-vs-cortex dispatch) to rossoctlclient.NewClient.
+// construction (and the api-vs-cortex dispatch) to rossoctlclient.NewClient.
 //
 // An explicit --server overrides any context and always targets the HTTP API,
-// so it is modeled as a transient k8s context with that server and no token.
+// so it is modeled as a transient api context with that server and no token.
 // Otherwise the effective context (see resolveContext) is used as-is.
 //
 // When --verbose is set, a logger writing one line per operation to the
@@ -142,7 +142,7 @@ func currentNamespace() (string, error) {
 func newClient(cmd *cobra.Command) (rossoctlclient.Rossoctl, error) {
 	var ctx *config.Context
 	if server != "" {
-		ctx = &config.Context{Type: config.TypeK8s, Server: server}
+		ctx = &config.Context{Type: config.TypeAPI, Server: server}
 	} else {
 		c, err := resolveContext()
 		if err != nil {

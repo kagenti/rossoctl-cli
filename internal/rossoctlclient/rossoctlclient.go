@@ -60,7 +60,7 @@ var (
 //
 //   - TypeCortex returns a file-backed cortexclient.FileClient rooted at the
 //     context's server.
-//   - Any other type (including the empty type, treated as k8s for backward
+//   - Any other type (including the empty type, treated as api for backward
 //     compatibility) returns an HTTP apiclient.Client for the context's server
 //     and bearer token.
 //

@@ -252,7 +252,7 @@ func TestConfigCreateContextNamespaceOmitted(t *testing.T) {
 	}
 }
 
-func TestConfigCreateContextDefaultsTypeK8s(t *testing.T) {
+func TestConfigCreateContextDefaultsTypeAPI(t *testing.T) {
 	isolateHome(t)
 
 	if _, err := execute(t, "config", "create-context",
@@ -260,7 +260,7 @@ func TestConfigCreateContextDefaultsTypeK8s(t *testing.T) {
 		t.Fatalf("create-context: %v", err)
 	}
 
-	// The table shows a TYPE column, and the created context defaults to k8s.
+	// The table shows a TYPE column, and the created context defaults to api.
 	out, err := execute(t, "config", "get-contexts")
 	if err != nil {
 		t.Fatalf("get-contexts: %v", err)
@@ -269,8 +269,8 @@ func TestConfigCreateContextDefaultsTypeK8s(t *testing.T) {
 		t.Errorf("get-contexts missing TYPE column:\n%s", out)
 	}
 	for line := range strings.SplitSeq(out, "\n") {
-		if strings.Contains(line, "dev") && !strings.Contains(line, string(config.TypeK8s)) {
-			t.Errorf("dev context should show type %q:\n%s", config.TypeK8s, out)
+		if strings.Contains(line, "dev") && !strings.Contains(line, string(config.TypeAPI)) {
+			t.Errorf("dev context should show type %q:\n%s", config.TypeAPI, out)
 		}
 	}
 
@@ -279,8 +279,8 @@ func TestConfigCreateContextDefaultsTypeK8s(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get-contexts --json: %v", err)
 	}
-	if !strings.Contains(jsonOut, `"type": "k8s"`) {
-		t.Errorf("--json output missing type k8s:\n%s", jsonOut)
+	if !strings.Contains(jsonOut, `"type": "api"`) {
+		t.Errorf("--json output missing type api:\n%s", jsonOut)
 	}
 }
 

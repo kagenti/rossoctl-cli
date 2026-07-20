@@ -49,7 +49,7 @@ until you authorize.`,
 			if existing, ok := cfg.Get(name); ok {
 				target = existing
 			} else {
-				cfg.Upsert(config.Context{Name: name, Type: config.TypeK8s, Server: server})
+				cfg.Upsert(config.Context{Name: name, Type: config.TypeAPI, Server: server})
 				target, _ = cfg.Get(name)
 			}
 			if err := cfg.SetCurrent(name); err != nil {
