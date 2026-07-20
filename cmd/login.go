@@ -31,38 +31,17 @@ verification URL and one-time code (and attempts to open a browser), then polls
 until you authorize.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		cfg, err := loadConfig()
+		// Load without the lazy default-server seed: login sets the token and
+		// then fetches the namespace itself (with that token), so it must not
+		// let an unauthenticated seed attempt the namespaces fetch first.
+		cfg, err := loadConfigNoSeed()
 		if err != nil {
 			return err
 		}
 
-		// Determine which context to log into:
-		//   - With an explicit --server, target the context named after that
-		//     server's hostname, creating it if none exists, and make it
-		//     current.
-		//   - Without --server, log into the current context (loadConfig has
-		//     already seeded one if the config was empty).
-		var target *config.Context
-		if cmd.Flags().Changed("server") {
-			name := config.ContextNameForServer(server)
-			if existing, ok := cfg.Get(name); ok {
-				target = existing
-			} else {
-				cfg.Upsert(config.Context{Name: name, Server: server})
-				target, _ = cfg.Get(name)
-			}
-			if err := cfg.SetCurrent(name); err != nil {
-				return err
-			}
-		} else {
-			cur, ok := cfg.Current()
-			if !ok {
-				// loadConfig seeds a current context, so this should not happen.
-				return fmt.Errorf("no current context to log in to")
-			}
-			target = cur
-		}
-
+		// Authenticate first, so that when a context is created we can fetch its
+		// default namespace with the freshly-obtained token (the namespaces
+		// endpoint may require authorization).
 		token := loginToken
 		if token == "" {
 			token, err = deviceLogin(cmd)
@@ -71,7 +50,67 @@ until you authorize.`,
 			}
 		}
 
+		// Determine which context to log into:
+		//   - With an explicit --server, target the context named after that
+		//     server's hostname, creating it if none exists, and make it
+		//     current.
+		//   - Without --server, log into the current context, seeding one from
+		//     the default server if the config is empty.
+		var target *config.Context
+		var created bool // whether login created the target context this run
+		if cmd.Flags().Changed("server") {
+			name := config.ContextNameForServer(server)
+			if existing, ok := cfg.Get(name); ok {
+				target = existing
+			} else {
+				cfg.Upsert(config.Context{Name: name, Server: server})
+				target, _ = cfg.Get(name)
+				created = true
+			}
+			if err := cfg.SetCurrent(name); err != nil {
+				return err
+			}
+		} else {
+			cur, ok := cfg.Current()
+			if !ok {
+				// Empty config: seed a context from the default server (named
+				// after its hostname) and make it current, mirroring the lazy
+				// seed but without a namespace fetch (login does that below).
+				name := config.ContextNameForServer(serverOrDefault())
+				cfg.Upsert(config.Context{Name: name, Server: serverOrDefault()})
+				if err := cfg.SetCurrent(name); err != nil {
+					return err
+				}
+				cur, _ = cfg.Get(name)
+				created = true
+			}
+			target = cur
+		}
+
 		target.BearerToken = token
+
+		// Default the namespace to the server's first namespace when the target
+		// context doesn't have one yet, authorizing with the token just
+		// obtained. A context that already has a namespace is left untouched.
+		//
+		// The fetch only hard-fails when login just created the context (there
+		// is no prior namespace to fall back to). For a re-login onto an
+		// existing namespace-less context, the fetch is best-effort: setting the
+		// token is login's core job and must not be blocked by a namespaces
+		// outage.
+		if target.Namespace == "" {
+			ns, err := firstNamespaceFor(cmd.Context(), target.Server, token, verboseLogf(cmd))
+			if err != nil {
+				if created {
+					return err
+				}
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"Warning: could not default the namespace for context %q: %v\n", target.Name, err)
+			} else {
+				target.Namespace = ns
+			}
+		}
+
 		if err := cfg.Save(); err != nil {
 			return err
 		}

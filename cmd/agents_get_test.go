@@ -171,19 +171,17 @@ func TestAgentsGetNamespaceOverride(t *testing.T) {
 }
 
 func TestAgentsGetRequiresNamespace(t *testing.T) {
-	isolateHome(t)
-	// Context has no namespace set.
-	if _, err := execute(t, "config", "create-context",
-		"--name", "dev", "--server", "http://x/api/v1/"); err != nil {
-		t.Fatalf("create-context: %v", err)
-	}
+	path := isolateHome(t)
+	// Context has no namespace set (seeded directly so create-context's
+	// namespace auto-default does not run).
+	seedNamespacelessContext(t, path, "dev", "http://x/api/v1/")
 	if _, err := execute(t, "agents", "get", "orders"); err == nil {
 		t.Error("agents get should error when the current context has no namespace")
 	}
 }
 
 func TestAgentsGetNamespaceFlagSuppliesWhenContextHasNone(t *testing.T) {
-	isolateHome(t)
+	path := isolateHome(t)
 
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -193,11 +191,9 @@ func TestAgentsGetNamespaceFlagSuppliesWhenContextHasNone(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	// Context has NO namespace; the --namespace flag supplies it.
-	if _, err := execute(t, "config", "create-context",
-		"--name", "dev", "--server", srv.URL+"/api/v1/"); err != nil {
-		t.Fatalf("create-context: %v", err)
-	}
+	// Context has NO namespace (seeded directly so create-context's namespace
+	// auto-default does not run); the --namespace flag supplies it.
+	seedNamespacelessContext(t, path, "dev", srv.URL+"/api/v1/")
 	if _, err := execute(t, "agents", "--namespace", "team9", "get", "orders"); err != nil {
 		t.Fatalf("agents get: %v", err)
 	}

@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"slices"
+	"sort"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
+	"github.com/kagenti/rossoctl-cli/internal/apiclient"
 	"github.com/kagenti/rossoctl-cli/internal/config"
 )
 
@@ -20,7 +23,33 @@ func loadConfig() (*config.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	return config.EnsureContext(path, serverOrDefault())
+	// When the config must be seeded, best-effort default the new context's
+	// namespace to the server's first namespace. The lazy seed runs implicitly
+	// on nearly every command, so it must not fail offline or against an
+	// auth-required server: a reachable no-auth server fills the namespace, any
+	// error leaves it blank and the triggering command proceeds. (The explicit
+	// create-context and login paths, by contrast, hard-fail on a fetch error.)
+	firstNS := func(server, token string) (string, error) {
+		ns, err := firstNamespaceFor(context.Background(), server, token, nil)
+		if err != nil {
+			return "", nil // best-effort: leave the namespace blank
+		}
+		return ns, nil
+	}
+	return config.EnsureContext(path, serverOrDefault(), firstNS)
+}
+
+// loadConfigNoSeed loads the config without the lazy default-server seed. It is
+// used by commands that create an explicit, named context (create-context):
+// seeding a context for the built-in default server first would trigger a
+// namespaces fetch against a server the user never named. A missing file loads
+// as an empty config, ready to Upsert into.
+func loadConfigNoSeed() (*config.Config, error) {
+	path, err := config.DefaultPath()
+	if err != nil {
+		return nil, err
+	}
+	return config.Load(path)
 }
 
 // --- get-contexts ---
@@ -120,14 +149,28 @@ are optional.`,
 			serverURI = serverOrDefault()
 		}
 
-		cfg, err := loadConfig()
+		// Don't lazily seed a default-server context here: the user is creating
+		// an explicit context, and seeding would fetch namespaces from a server
+		// they never named.
+		cfg, err := loadConfigNoSeed()
 		if err != nil {
 			return err
 		}
+
+		// Default the namespace to the server's first namespace when the user
+		// didn't specify one, authorizing with the context's own bearer token.
+		namespace := createContextNamespace
+		if namespace == "" {
+			namespace, err = firstNamespaceFor(cmd.Context(), serverURI, createContextToken, verboseLogf(cmd))
+			if err != nil {
+				return err
+			}
+		}
+
 		cfg.Upsert(config.Context{
 			Name:        createContextName,
 			Server:      serverURI,
-			Namespace:   createContextNamespace,
+			Namespace:   namespace,
 			BearerToken: createContextToken,
 		})
 		// Creating a context makes it the current one.
@@ -235,6 +278,40 @@ func serverKnowsNamespace(cmd *cobra.Command, ns string) (bool, error) {
 		return false, err
 	}
 	return slices.Contains(resp.Namespaces, ns), nil
+}
+
+// firstNamespaceFor returns the namespace a new context targeting server should
+// default to: the first (alphabetically, matching `rossoctl namespaces list`)
+// of the enabled namespaces the server reports. token authorizes the request
+// (empty for unauthenticated servers). An empty result or any request error is
+// returned as an error, since the caller cannot default the namespace without
+// one. logf, when non-nil, receives per-request verbose logging.
+func firstNamespaceFor(ctx context.Context, server, token string, logf func(string, ...any)) (string, error) {
+	client := &apiclient.Client{BaseURL: server, BearerToken: token, Logf: logf}
+	resp, err := client.ListNamespaces(ctx, true)
+	if err != nil {
+		return "", err
+	}
+	if len(resp.Namespaces) == 0 {
+		return "", fmt.Errorf("no namespaces available on %s to default the context to", server)
+	}
+	// Sort a copy and take the first, so the default matches the first row of
+	// `rossoctl namespaces list` regardless of the server's ordering.
+	sorted := append([]string(nil), resp.Namespaces...)
+	sort.Strings(sorted)
+	return sorted[0], nil
+}
+
+// verboseLogf returns a logger that writes one line per HTTP request to cmd's
+// stderr when --verbose is set, or nil otherwise (mirrors newClient's wiring).
+func verboseLogf(cmd *cobra.Command) func(string, ...any) {
+	if !verbose {
+		return nil
+	}
+	errOut := cmd.ErrOrStderr()
+	return func(format string, args ...any) {
+		fmt.Fprintf(errOut, format+"\n", args...)
+	}
 }
 
 func init() {

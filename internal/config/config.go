@@ -186,19 +186,39 @@ func ContextNameForServer(server string) string {
 	return u.Host
 }
 
+// FirstNamespaceFunc resolves the namespace a newly-seeded context should
+// default to, given that context's server and bearer token. Returning an error
+// aborts seeding (the config is not saved). It is injected so this package
+// stays free of the API client; the command layer supplies an implementation
+// backed by GET <server>/namespaces.
+type FirstNamespaceFunc func(server, bearerToken string) (string, error)
+
 // EnsureContext loads the config at path and, if it contains no contexts,
 // seeds one from defaultServer (named after the server's hostname, with the
 // full URI as its server and an empty bearer token), makes it current, and
 // saves. The resulting config is returned. This is the single place the lazy
 // create-if-missing behavior lives.
-func EnsureContext(path, defaultServer string) (*Config, error) {
+//
+// When firstNS is non-nil it is called (with an empty token — the lazy seed is
+// unauthenticated) to determine the seeded context's namespace; an error from
+// it aborts seeding and nothing is written. A nil firstNS seeds a blank
+// namespace and performs no network call.
+func EnsureContext(path, defaultServer string, firstNS FirstNamespaceFunc) (*Config, error) {
 	cfg, err := Load(path)
 	if err != nil {
 		return nil, err
 	}
 	if len(cfg.Contexts) == 0 {
 		name := ContextNameForServer(defaultServer)
-		cfg.Upsert(Context{Name: name, Server: defaultServer})
+		seeded := Context{Name: name, Server: defaultServer}
+		if firstNS != nil {
+			ns, err := firstNS(defaultServer, "")
+			if err != nil {
+				return nil, err
+			}
+			seeded.Namespace = ns
+		}
+		cfg.Upsert(seeded)
 		if err := cfg.SetCurrent(name); err != nil {
 			return nil, err
 		}

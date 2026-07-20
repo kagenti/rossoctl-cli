@@ -20,6 +20,24 @@ func isolateHome(t *testing.T) string {
 	return filepath.Join(dir, ".rossoctl", "config.yaml")
 }
 
+// seedNamespacelessContext writes a config with a single context that has an
+// empty namespace and makes it current, bypassing create-context's namespace
+// auto-default. Used by tests whose intent is a namespace-less context.
+func seedNamespacelessContext(t *testing.T, path, name, server string) {
+	t.Helper()
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	cfg.Upsert(config.Context{Name: name, Server: server})
+	if err := cfg.SetCurrent(name); err != nil {
+		t.Fatalf("set current: %v", err)
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+}
+
 func TestConfigGetContextsAutoCreates(t *testing.T) {
 	path := isolateHome(t)
 
@@ -48,12 +66,12 @@ func TestConfigCreateAndUseContext(t *testing.T) {
 	isolateHome(t)
 
 	if _, err := execute(t, "config", "create-context",
-		"--name", "dev", "--server", "http://dev/api/v1/", "--bearer-token", "tok"); err != nil {
+		"--name", "dev", "--server", "http://dev/api/v1/", "--bearer-token", "tok", "--namespace", "team1"); err != nil {
 		t.Fatalf("create-context dev: %v", err)
 	}
 	// A second context should become current on creation.
 	if _, err := execute(t, "config", "create-context",
-		"--name", "prod", "--server", "http://prod/api/v1/"); err != nil {
+		"--name", "prod", "--server", "http://prod/api/v1/", "--namespace", "team1"); err != nil {
 		t.Fatalf("create-context prod: %v", err)
 	}
 
@@ -134,12 +152,12 @@ func TestConfigCreateContextNamespace(t *testing.T) {
 }
 
 func TestConfigCreateContextNamespaceOmitted(t *testing.T) {
-	isolateHome(t)
+	path := isolateHome(t)
 
-	if _, err := execute(t, "config", "create-context",
-		"--name", "dev", "--server", "http://dev/api/v1/"); err != nil {
-		t.Fatalf("create-context: %v", err)
-	}
+	// A context with a genuinely empty namespace (seeded directly, since
+	// create-context now auto-defaults the namespace when --namespace is
+	// omitted). This test's subject is how an empty namespace renders.
+	seedNamespacelessContext(t, path, "dev", "http://dev/api/v1/")
 	// Omitted namespace renders as "-" and is omitted from stored JSON.
 	out, _ := execute(t, "config", "get-contexts")
 	for line := range strings.SplitSeq(out, "\n") {
@@ -150,6 +168,43 @@ func TestConfigCreateContextNamespaceOmitted(t *testing.T) {
 	jsonOut, _ := execute(t, "config", "get-contexts", "--json")
 	if strings.Contains(jsonOut, `"namespace"`) {
 		t.Errorf("empty namespace should be omitted from JSON:\n%s", jsonOut)
+	}
+}
+
+func TestConfigCreateContextDefaultsNamespaceToFirst(t *testing.T) {
+	path := isolateHome(t)
+	// Server returns namespaces out of alphabetical order; the default must be
+	// the first one after sorting (matching `rossoctl namespaces list`).
+	srv := namespacesServer(t, "team2", "team1")
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", srv.URL+"/api/v1/"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	cur, _ := cfg.Current()
+	if cur.Namespace != "team1" {
+		t.Errorf("defaulted namespace = %q, want team1 (first after sorting)", cur.Namespace)
+	}
+}
+
+func TestConfigCreateContextEmptyNamespaceListErrors(t *testing.T) {
+	isolateHome(t)
+	// A server that reports no namespaces cannot supply a default: create-context
+	// must fail rather than create a namespace-less context.
+	srv := namespacesServer(t) // empty list
+
+	_, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", srv.URL+"/api/v1/")
+	if err == nil {
+		t.Fatal("expected create-context to error when the server has no namespaces")
+	}
+	if !strings.Contains(err.Error(), "no namespaces available") {
+		t.Errorf("error = %v, want it to mention no namespaces available", err)
 	}
 }
 
@@ -296,11 +351,11 @@ func TestConfigSetContextRenameAndNamespaceTogether(t *testing.T) {
 
 func TestConfigSetContextRenameToExistingErrors(t *testing.T) {
 	isolateHome(t)
-	if _, err := execute(t, "config", "create-context", "--name", "a", "--server", "http://a/"); err != nil {
+	if _, err := execute(t, "config", "create-context", "--name", "a", "--server", "http://a/", "--namespace", "team1"); err != nil {
 		t.Fatalf("create-context a: %v", err)
 	}
 	// b becomes current.
-	if _, err := execute(t, "config", "create-context", "--name", "b", "--server", "http://b/"); err != nil {
+	if _, err := execute(t, "config", "create-context", "--name", "b", "--server", "http://b/", "--namespace", "team1"); err != nil {
 		t.Fatalf("create-context b: %v", err)
 	}
 	// Renaming current (b) to existing name a must error.
@@ -364,7 +419,7 @@ func TestConfigSetContextKeepsServerWhenNotGiven(t *testing.T) {
 // current context's server (and bearer token) are used, and that an explicit
 // --server overrides the context (and drops the token).
 func TestCurrentContextDrivesServer(t *testing.T) {
-	isolateHome(t)
+	path := isolateHome(t)
 
 	var gotAuthByHost = map[string]string{}
 	newSrv := func() *httptest.Server {
@@ -383,10 +438,19 @@ func TestCurrentContextDrivesServer(t *testing.T) {
 	overrideSrv := newSrv()
 	defer overrideSrv.Close()
 
-	// Point the current context at ctxSrv with a token.
-	if _, err := execute(t, "config", "create-context",
-		"--name", "ctx", "--server", ctxSrv.URL+"/api/v1/", "--bearer-token", "ctxtok"); err != nil {
-		t.Fatalf("create-context: %v", err)
+	// Point the current context at ctxSrv with a token. Seeded directly (with
+	// no namespace) so create-context's namespace auto-default does not run
+	// against the empty-namespaces server.
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	cfg.Upsert(config.Context{Name: "ctx", Server: ctxSrv.URL + "/api/v1/", BearerToken: "ctxtok"})
+	if err := cfg.SetCurrent("ctx"); err != nil {
+		t.Fatalf("set current: %v", err)
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("seed config: %v", err)
 	}
 
 	// No --server -> uses the context server + token.

@@ -178,11 +178,10 @@ func TestAgentsListSingleNamespaceFromFlag(t *testing.T) {
 
 func TestAgentsListRequiresNamespaceWithoutAllFlag(t *testing.T) {
 	// No --all-namespaces and no --namespace/context namespace -> error.
-	isolateHome(t)
-	if _, err := execute(t, "config", "create-context",
-		"--name", "dev", "--server", "http://x/api/v1/"); err != nil {
-		t.Fatalf("create-context: %v", err)
-	}
+	// Context seeded directly so create-context's namespace auto-default
+	// does not run.
+	path := isolateHome(t)
+	seedNamespacelessContext(t, path, "dev", "http://x/api/v1/")
 	if _, err := execute(t, "agents", "list"); err == nil {
 		t.Error("agents list without --all-namespaces or a namespace should error")
 	}

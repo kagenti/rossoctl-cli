@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -196,7 +197,7 @@ func TestCurrent(t *testing.T) {
 
 func TestEnsureContextSeedsFromDefault(t *testing.T) {
 	path := tmpConfigPath(t)
-	cfg, err := EnsureContext(path, "http://seed-host:8080/api/v1/")
+	cfg, err := EnsureContext(path, "http://seed-host:8080/api/v1/", nil)
 	if err != nil {
 		t.Fatalf("EnsureContext: %v", err)
 	}
@@ -250,11 +251,51 @@ func TestEnsureContextLeavesExistingAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg, err := EnsureContext(path, "http://seed/")
+	cfg, err := EnsureContext(path, "http://seed/", nil)
 	if err != nil {
 		t.Fatalf("EnsureContext: %v", err)
 	}
 	if len(cfg.Contexts) != 1 || cfg.CurrentContext != "mine" {
 		t.Errorf("EnsureContext altered existing config: %+v", cfg)
+	}
+}
+
+func TestEnsureContextSeedsNamespaceFromResolver(t *testing.T) {
+	path := tmpConfigPath(t)
+	firstNS := func(server, token string) (string, error) {
+		if token != "" {
+			t.Errorf("seed resolver got token %q, want empty (seed is unauthenticated)", token)
+		}
+		if server != "http://seed-host/" {
+			t.Errorf("seed resolver got server %q", server)
+		}
+		return "team1", nil
+	}
+	cfg, err := EnsureContext(path, "http://seed-host/", firstNS)
+	if err != nil {
+		t.Fatalf("EnsureContext: %v", err)
+	}
+	cur, ok := cfg.Current()
+	if !ok {
+		t.Fatal("expected a current context after seeding")
+	}
+	if cur.Namespace != "team1" {
+		t.Errorf("seeded namespace = %q, want team1", cur.Namespace)
+	}
+}
+
+func TestEnsureContextResolverErrorAbortsSeed(t *testing.T) {
+	path := tmpConfigPath(t)
+	wantErr := errors.New("boom")
+	firstNS := func(server, token string) (string, error) {
+		return "", wantErr
+	}
+	_, err := EnsureContext(path, "http://seed-host/", firstNS)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("EnsureContext error = %v, want %v", err, wantErr)
+	}
+	// A failed seed must not write a config file.
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Errorf("expected no config file after aborted seed, stat err = %v", statErr)
 	}
 }

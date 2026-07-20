@@ -82,12 +82,10 @@ func TestAgentsDeleteNamespaceOverride(t *testing.T) {
 }
 
 func TestAgentsDeleteRequiresNamespace(t *testing.T) {
-	isolateHome(t)
-	// Context without a namespace.
-	if _, err := execute(t, "config", "create-context",
-		"--name", "dev", "--server", "http://x/api/v1/"); err != nil {
-		t.Fatalf("create-context: %v", err)
-	}
+	path := isolateHome(t)
+	// Context without a namespace (seeded directly so create-context's
+	// namespace auto-default does not run).
+	seedNamespacelessContext(t, path, "dev", "http://x/api/v1/")
 	if _, err := execute(t, "agents", "delete", "orders"); err == nil {
 		t.Error("agents delete should error when the current context has no namespace")
 	}
