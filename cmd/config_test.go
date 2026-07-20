@@ -12,12 +12,14 @@ import (
 )
 
 // isolateHome points HOME at a fresh temp dir for this test so the context
-// config starts empty and never touches the real home directory.
+// config starts empty and never touches the real home directory. It also
+// clears XDG_CONFIG_HOME so the default path resolves under the temp HOME.
 func isolateHome(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
-	return filepath.Join(dir, ".rossoctl", "config.yaml")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	return filepath.Join(dir, ".config", "rossoctl", "config.yaml")
 }
 
 func TestConfigGetContextsNeverCreates(t *testing.T) {
@@ -104,6 +106,80 @@ func TestConfigUseContextNeverCreates(t *testing.T) {
 	}
 }
 
+func TestConfigDeleteContext(t *testing.T) {
+	isolateHome(t)
+
+	// Create two contexts; prod becomes current (most recently created).
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", "http://dev/api/v1/"); err != nil {
+		t.Fatalf("create-context dev: %v", err)
+	}
+	if _, err := execute(t, "config", "create-context",
+		"--name", "prod", "--server", "http://prod/api/v1/"); err != nil {
+		t.Fatalf("create-context prod: %v", err)
+	}
+
+	// Delete the non-current one; it must disappear and the current stays.
+	if _, err := execute(t, "config", "delete-context", "dev"); err != nil {
+		t.Fatalf("delete-context dev: %v", err)
+	}
+	out, err := execute(t, "config", "get-contexts")
+	if err != nil {
+		t.Fatalf("get-contexts: %v", err)
+	}
+	if strings.Contains(out, "dev") {
+		t.Errorf("dev should be gone after delete:\n%s", out)
+	}
+	if !strings.Contains(out, "prod") {
+		t.Errorf("prod should remain after deleting dev:\n%s", out)
+	}
+}
+
+func TestConfigDeleteCurrentContextClearsCurrent(t *testing.T) {
+	isolateHome(t)
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "only", "--server", "http://only/api/v1/"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+
+	out, err := execute(t, "config", "delete-context", "only")
+	if err != nil {
+		t.Fatalf("delete-context: %v", err)
+	}
+	if !strings.Contains(out, "was current") {
+		t.Errorf("deleting the current context should note it was current:\n%s", out)
+	}
+
+	// The config still exists but has no current context and no contexts.
+	cfg := loadTestConfig(t)
+	if cfg.CurrentContext != "" {
+		t.Errorf("current context = %q, want empty after deleting it", cfg.CurrentContext)
+	}
+	if _, ok := cfg.Get("only"); ok {
+		t.Error("deleted context should not remain")
+	}
+}
+
+func TestConfigDeleteContextUnknownErrors(t *testing.T) {
+	isolateHome(t)
+	if _, err := execute(t, "config", "delete-context", "does-not-exist"); err == nil {
+		t.Error("delete-context on an unknown name should error")
+	}
+}
+
+func TestConfigDeleteContextNeverCreates(t *testing.T) {
+	path := isolateHome(t)
+
+	// delete-context on an empty config must error, not seed a context.
+	if _, err := execute(t, "config", "delete-context", "anything"); err == nil {
+		t.Error("delete-context on an empty config should error")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("delete-context should not create the config file, stat err = %v", err)
+	}
+}
+
 func TestContextOverrideNeverCreates(t *testing.T) {
 	path := isolateHome(t)
 
@@ -173,6 +249,38 @@ func TestConfigCreateContextNamespaceOmitted(t *testing.T) {
 	jsonOut, _ := execute(t, "config", "get-contexts", "--json")
 	if strings.Contains(jsonOut, `"namespace"`) {
 		t.Errorf("empty namespace should be omitted from JSON:\n%s", jsonOut)
+	}
+}
+
+func TestConfigCreateContextDefaultsTypeAPI(t *testing.T) {
+	isolateHome(t)
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", "http://dev/api/v1/"); err != nil {
+		t.Fatalf("create-context: %v", err)
+	}
+
+	// The table shows a TYPE column, and the created context defaults to api.
+	out, err := execute(t, "config", "get-contexts")
+	if err != nil {
+		t.Fatalf("get-contexts: %v", err)
+	}
+	if !strings.Contains(out, "TYPE") {
+		t.Errorf("get-contexts missing TYPE column:\n%s", out)
+	}
+	for line := range strings.SplitSeq(out, "\n") {
+		if strings.Contains(line, "dev") && !strings.Contains(line, string(config.TypeAPI)) {
+			t.Errorf("dev context should show type %q:\n%s", config.TypeAPI, out)
+		}
+	}
+
+	// The type is persisted in the raw config.
+	jsonOut, err := execute(t, "config", "get-contexts", "--json")
+	if err != nil {
+		t.Fatalf("get-contexts --json: %v", err)
+	}
+	if !strings.Contains(jsonOut, `"type": "api"`) {
+		t.Errorf("--json output missing type api:\n%s", jsonOut)
 	}
 }
 

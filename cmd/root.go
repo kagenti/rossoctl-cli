@@ -15,6 +15,8 @@ import (
 
 	"github.com/kagenti/rossoctl-cli/internal/apiclient"
 	"github.com/kagenti/rossoctl-cli/internal/config"
+	"github.com/kagenti/rossoctl-cli/internal/cortexclient"
+	"github.com/kagenti/rossoctl-cli/internal/rossoctlclient"
 )
 
 // These are set at build time via -ldflags. See the Makefile.
@@ -127,24 +129,50 @@ func currentNamespace() (string, error) {
 	return ctx.Namespace, nil
 }
 
-// newClient builds an API client for the effective server (see resolveServer).
-// When --verbose is set, it attaches a logger that writes one line per HTTP
-// request to the command's stderr, so verbose output never mixes with the
-// --json/table results on stdout.
-func newClient(cmd *cobra.Command) (*apiclient.Client, error) {
-	serverURI, token, err := resolveServer()
-	if err != nil {
-		return nil, err
+// newClient builds a Rossoctl backend for the effective context, delegating
+// construction (and the api-vs-cortex dispatch) to rossoctlclient.NewClient.
+//
+// An explicit --server overrides any context and always targets the HTTP API,
+// so it is modeled as a transient api context with that server and no token.
+// Otherwise the effective context (see resolveContext) is used as-is.
+//
+// When --verbose is set, a logger writing one line per operation to the
+// command's stderr is attached to the backend, so verbose output never mixes
+// with the --json/table results on stdout.
+func newClient(cmd *cobra.Command) (rossoctlclient.Rossoctl, error) {
+	var ctx *config.Context
+	if server != "" {
+		ctx = &config.Context{Type: config.TypeAPI, Server: server}
+	} else {
+		c, err := resolveContext()
+		if err != nil {
+			return nil, err
+		}
+		ctx = c
 	}
 
-	client := &apiclient.Client{BaseURL: serverURI, BearerToken: token}
-	if verbose {
-		errOut := cmd.ErrOrStderr()
-		client.Logf = func(format string, args ...any) {
-			fmt.Fprintf(errOut, format+"\n", args...)
-		}
-	}
+	client := rossoctlclient.NewClient(ctx)
+	attachVerboseLogger(cmd, client)
 	return client, nil
+}
+
+// attachVerboseLogger wires a stderr logger onto client when --verbose is set.
+// It handles both backends: the HTTP apiclient.Client and the file-backed
+// cortexclient.FileClient each expose a Logf hook.
+func attachVerboseLogger(cmd *cobra.Command, client rossoctlclient.Rossoctl) {
+	if !verbose {
+		return
+	}
+	errOut := cmd.ErrOrStderr()
+	logf := func(format string, args ...any) {
+		fmt.Fprintf(errOut, format+"\n", args...)
+	}
+	switch c := client.(type) {
+	case *apiclient.Client:
+		c.Logf = logf
+	case *cortexclient.FileClient:
+		c.Logf = logf
+	}
 }
 
 // Execute runs the root command. It is the single entry point called from

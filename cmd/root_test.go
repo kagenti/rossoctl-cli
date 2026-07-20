@@ -12,14 +12,19 @@ import (
 )
 
 // TestMain isolates HOME to a throwaway directory for the whole cmd test
-// binary, so no test can create or mutate the real ~/.rossoctl/config.yaml
-// when a command resolves its server via the context config.
+// binary, so no test can create or mutate the real
+// ~/.config/rossoctl/config.yaml when a command resolves its server via the
+// context config. XDG_CONFIG_HOME and ROSSOCORTEX_CONFIG_DIR are cleared so the
+// default paths resolve under the temp HOME rather than a developer's real
+// config dir.
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "rossoctl-cmd-test-home")
 	if err != nil {
 		panic(err)
 	}
 	_ = os.Setenv("HOME", dir)
+	_ = os.Unsetenv("XDG_CONFIG_HOME")
+	_ = os.Unsetenv("ROSSOCORTEX_CONFIG_DIR")
 	// Never spawn a real browser during the device-login tests, and don't
 	// actually sleep between token polls.
 	browserOpener = func(string) error { return nil }

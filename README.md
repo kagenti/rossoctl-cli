@@ -6,7 +6,7 @@ A command-line interface for Rossoctl, built with [Cobra](https://github.com/spf
 
 The `downloadRossoctl` script downloads the release archive for your platform
 (detected via `uname` / `uname -m`), extracts it, and installs the binary at
-`$HOME/.rossoctl/rossoctl`:
+`$HOME/.config/rossoctl/rossoctl`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/kagenti/rossoctl-cli/main/downloadRossoctl | sh
@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/kagenti/rossoctl-cli/main/downloadR
   | ROSSOCTL_CLI_VERSION=v0.1.0 sh
 ```
 
-The script prints how to add `$HOME/.rossoctl` to your `PATH`. Each release
+The script prints how to add `$HOME/.config/rossoctl` to your `PATH`. Each release
 ships prebuilt binaries built by `.github/workflows/release.yml`; the asset
 names are `rossoctl-<version>-<uname>-<uname -m>.tar.gz` (arm64 is labeled
 `arm64` on both Linux and Darwin).
@@ -50,7 +50,7 @@ This project follows the standard Go CLI layout:
 ├── internal/                   # Private application logic (not importable externally)
 │   ├── apiclient/              # HTTP client for the Rossoctl backend API
 │   ├── buildinfo/              # Version metadata formatting
-│   ├── config/                 # ~/.rossoctl/config.yaml context persistence
+│   ├── config/                 # ~/.config/rossoctl/config.yaml context persistence
 │   └── deviceflow/             # OAuth 2.0 device authorization grant (Keycloak)
 ├── Makefile
 └── go.mod
@@ -81,7 +81,7 @@ rossoctl --help
 rossoctl version
 rossoctl agents --help
 
-# Manage contexts (persisted in ~/.rossoctl/config.yaml, kubectl-style)
+# Manage contexts (persisted in ~/.config/rossoctl/config.yaml, kubectl-style)
 rossoctl config get-contexts                    # created + seeded on first use
 rossoctl config create-context --name dev \
     --server http://my-host:8080/api/v1/ --namespace team1 --bearer-token <token>   # becomes current
@@ -147,7 +147,7 @@ rossoctl -v agents list
 
 ### Contexts and server resolution
 
-Contexts are persisted in `~/.rossoctl/config.yaml` (directory `0700`, file
+Contexts are persisted in `~/.config/rossoctl/config.yaml` (directory `0700`, file
 `0600`). Each context has a name, a server URI, an optional namespace, and an
 optional bearer token.
 The file is created lazily — the first command that needs it seeds a context

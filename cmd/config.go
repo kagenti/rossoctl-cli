@@ -42,7 +42,7 @@ var configGetContextsJSON bool
 var configGetContextsCmd = &cobra.Command{
 	Use:   "get-contexts",
 	Short: "List configured contexts",
-	Long: `List the contexts persisted in ~/.rossoctl/config.yaml.
+	Long: `List the contexts persisted in ~/.config/rossoctl/config.yaml.
 
 Listing never creates a context: if the config file does not exist or is empty,
 an empty list is shown. With --json the raw config is printed unchanged.`,
@@ -61,11 +61,17 @@ an empty list is shown. With --json the raw config is printed unchanged.`,
 
 		out := cmd.OutOrStdout()
 		w := tabwriter.NewWriter(out, 0, 0, 3, ' ', 0)
-		fmt.Fprintln(w, "CURRENT\tNAME\tSERVER\tNAMESPACE\tTOKEN")
+		fmt.Fprintln(w, "CURRENT\tNAME\tTYPE\tSERVER\tNAMESPACE\tTOKEN")
 		for _, c := range cfg.Contexts {
 			marker := ""
 			if c.Name == cfg.CurrentContext {
 				marker = "*"
+			}
+			typ := string(c.Type)
+			if typ == "" {
+				// Contexts written before the type field existed are treated as
+				// api, the historical default.
+				typ = string(config.TypeAPI)
 			}
 			namespace := c.Namespace
 			if namespace == "" {
@@ -75,7 +81,7 @@ an empty list is shown. With --json the raw config is printed unchanged.`,
 			if c.BearerToken != "" {
 				token = "<set>"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", marker, c.Name, c.Server, namespace, token)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", marker, c.Name, typ, c.Server, namespace, token)
 		}
 		return w.Flush()
 	},
@@ -102,6 +108,42 @@ var configUseContextCmd = &cobra.Command{
 			return err
 		}
 		cmd.Printf("Switched to context %q.\n", name)
+		return nil
+	},
+}
+
+// --- delete-context ---
+
+var configDeleteContextCmd = &cobra.Command{
+	Use:   "delete-context <name>",
+	Short: "Delete a context",
+	Long: `Delete the named context from ~/.config/rossoctl/config.yaml.
+
+Deleting never creates the config: it errors if the named context does not
+exist. If the deleted context was the current one, no context is current
+afterward.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		name := args[0]
+		// Read-only load: delete-context operates on an existing context and
+		// must never bring the config into existence. Delete errors if name is
+		// unknown.
+		cfg, err := loadConfigReadOnly()
+		if err != nil {
+			return err
+		}
+		wasCurrent := cfg.CurrentContext == name
+		if err := cfg.Delete(name); err != nil {
+			return err
+		}
+		if err := cfg.Save(); err != nil {
+			return err
+		}
+		if wasCurrent {
+			cmd.Printf("Deleted context %q (it was current; no context is current now).\n", name)
+		} else {
+			cmd.Printf("Deleted context %q.\n", name)
+		}
 		return nil
 	},
 }
@@ -140,6 +182,7 @@ are optional.`,
 		}
 		cfg.Upsert(config.Context{
 			Name:        createContextName,
+			Type:        config.TypeAPI,
 			Server:      serverURI,
 			Namespace:   createContextNamespace,
 			BearerToken: createContextToken,
@@ -267,6 +310,7 @@ func init() {
 	configCmd.AddCommand(
 		configGetContextsCmd,
 		configUseContextCmd,
+		configDeleteContextCmd,
 		configCreateContextCmd,
 		configSetContextCmd,
 	)

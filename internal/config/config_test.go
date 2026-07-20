@@ -8,7 +8,7 @@ import (
 
 func tmpConfigPath(t *testing.T) string {
 	t.Helper()
-	return filepath.Join(t.TempDir(), ".rossoctl", "config.yaml")
+	return filepath.Join(t.TempDir(), ".config", "rossoctl", "config.yaml")
 }
 
 func TestLoadMissingReturnsEmpty(t *testing.T) {
@@ -231,7 +231,7 @@ func TestContextNameForServer(t *testing.T) {
 		{"http://kagenti-ui.localtest.me:8080/api/v1/", "kagenti-ui.localtest.me"},
 		{"https://api.example.com/api/v1/", "api.example.com"},
 		{"http://127.0.0.1:9090/", "127.0.0.1"},
-		{"not a url", "not a url"},         // unparseable -> raw fallback
+		{"not a url", "not a url"},           // unparseable -> raw fallback
 		{"/relative/path", "/relative/path"}, // no host -> raw fallback
 	}
 	for _, c := range cases {

@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kagenti/rossoctl-cli/internal/apiclient"
 	"github.com/kagenti/rossoctl-cli/internal/config"
 	"github.com/kagenti/rossoctl-cli/internal/deviceflow"
+	"github.com/kagenti/rossoctl-cli/internal/rossoctlclient"
 )
 
 var loginToken string
@@ -18,7 +18,7 @@ var loginToken string
 var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Log in and store a bearer token on a context",
-	Long: `Obtain a bearer token and store it on a context in ~/.rossoctl/config.yaml.
+	Long: `Obtain a bearer token and store it on a context in ~/.config/rossoctl/config.yaml.
 
 With --server, the token is stored on the context named after that server's
 hostname, creating it if none exists, and that context becomes current.
@@ -49,7 +49,7 @@ until you authorize.`,
 			if existing, ok := cfg.Get(name); ok {
 				target = existing
 			} else {
-				cfg.Upsert(config.Context{Name: name, Server: server})
+				cfg.Upsert(config.Context{Name: name, Type: config.TypeAPI, Server: server})
 				target, _ = cfg.Get(name)
 			}
 			if err := cfg.SetCurrent(name); err != nil {
@@ -102,13 +102,8 @@ until you authorize.`,
 // It builds its own client from the target so the just-obtained token is used
 // regardless of how the effective server would otherwise resolve.
 func firstNamespace(cmd *cobra.Command, target *config.Context) string {
-	client := &apiclient.Client{BaseURL: target.Server, BearerToken: target.BearerToken}
-	if verbose {
-		errOut := cmd.ErrOrStderr()
-		client.Logf = func(format string, args ...any) {
-			fmt.Fprintf(errOut, format+"\n", args...)
-		}
-	}
+	client := rossoctlclient.NewClient(target)
+	attachVerboseLogger(cmd, client)
 	resp, err := client.ListNamespaces(cmd.Context(), true)
 	if err != nil || len(resp.Namespaces) == 0 {
 		return ""
