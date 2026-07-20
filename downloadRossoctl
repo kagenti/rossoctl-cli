@@ -6,7 +6,8 @@
 #
 # Downloads the release archive matching this system's OS (`uname`) and
 # architecture (`uname -m`), extracts it into a temporary directory, and
-# installs the binary at $HOME/.rossoctl/rossoctl (chmod +x).
+# installs the binary at $HOME/.config/rossoctl/rossoctl (chmod +x). The base
+# directory honors $XDG_CONFIG_HOME (defaulting to $HOME/.config).
 #
 # Environment:
 #   ROSSOCTL_CLI_VERSION   release tag to install (default: latest release)
@@ -18,7 +19,7 @@
 set -eu
 
 REPO="kagenti/rossoctl-cli"
-INSTALL_DIR="${HOME}/.rossoctl"
+INSTALL_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/rossoctl"
 INSTALL_PATH="${INSTALL_DIR}/rossoctl"
 
 # ---- helpers ---------------------------------------------------------------

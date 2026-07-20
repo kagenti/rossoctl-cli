@@ -1,5 +1,5 @@
 // Package config manages rossoctl's persisted context configuration, stored
-// in ~/.rossoctl/config.yaml (kubectl-style).
+// in ~/.config/rossoctl/config.yaml (kubectl-style).
 //
 // A Config holds a list of named contexts — each with a server URI and an
 // optional bearer token — plus the name of the current context. Like the
@@ -23,10 +23,23 @@ const (
 	filePerm os.FileMode = 0o600
 )
 
-// Context is a single named target: a server URI, an optional default
+// Type is the kind of backend a Context targets: a live Kubernetes-backed
+// Rossoctl API server ("k8s") or a Cortex file-backed client ("cortex").
+type Type string
+
+const (
+	// TypeK8s is a context served by the Rossoctl API against a Kubernetes
+	// cluster.
+	TypeK8s Type = "k8s"
+	// TypeCortex is a context served by a local Cortex file client.
+	TypeCortex Type = "cortex"
+)
+
+// Context is a single named target: a type, a server URI, an optional default
 // namespace, and an optional bearer token.
 type Context struct {
 	Name        string `yaml:"name" json:"name"`
+	Type        Type   `yaml:"type,omitempty" json:"type,omitempty"`
 	Server      string `yaml:"server" json:"server"`
 	Namespace   string `yaml:"namespace,omitempty" json:"namespace,omitempty"`
 	BearerToken string `yaml:"bearerToken,omitempty" json:"bearerToken,omitempty"`
@@ -43,13 +56,19 @@ type Config struct {
 	path string `yaml:"-" json:"-"`
 }
 
-// DefaultPath returns ~/.rossoctl/config.yaml.
+// DefaultPath returns the default config file location,
+// ~/.config/rossoctl/config.yaml. The base directory honors $XDG_CONFIG_HOME
+// (defaulting to ~/.config) so it follows the XDG Base Directory spec.
 func DefaultPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("locating home directory: %w", err)
+	xdg := os.Getenv("XDG_CONFIG_HOME")
+	if xdg == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("locating home directory: %w", err)
+		}
+		xdg = filepath.Join(home, ".config")
 	}
-	return filepath.Join(home, ".rossoctl", "config.yaml"), nil
+	return filepath.Join(xdg, "rossoctl", "config.yaml"), nil
 }
 
 // Load reads and parses the config at path. A missing file is not an error:
@@ -146,6 +165,21 @@ func (c *Config) SetCurrent(name string) error {
 	return nil
 }
 
+// Delete removes the named context. It errors if name is unknown. If the
+// deleted context was current, the current-context reference is cleared.
+func (c *Config) Delete(name string) error {
+	for i := range c.Contexts {
+		if c.Contexts[i].Name == name {
+			c.Contexts = append(c.Contexts[:i], c.Contexts[i+1:]...)
+			if c.CurrentContext == name {
+				c.CurrentContext = ""
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("no context named %q", name)
+}
+
 // Rename changes the name of context oldName to newName. It errors if oldName
 // is unknown or newName already names a different context. Renaming a no-op
 // (oldName == newName) is allowed. If the renamed context was current, the
@@ -198,7 +232,7 @@ func EnsureContext(path, defaultServer string) (*Config, error) {
 	}
 	if len(cfg.Contexts) == 0 {
 		name := ContextNameForServer(defaultServer)
-		cfg.Upsert(Context{Name: name, Server: defaultServer})
+		cfg.Upsert(Context{Name: name, Type: TypeK8s, Server: defaultServer})
 		if err := cfg.SetCurrent(name); err != nil {
 			return nil, err
 		}
