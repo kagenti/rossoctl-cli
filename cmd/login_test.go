@@ -53,6 +53,10 @@ func deviceLoginServer(t *testing.T, enabled bool) *httptest.Server {
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case r.URL.Path == "/api/v1/namespaces":
+			// login lists namespaces after obtaining a token to seed a blank
+			// context namespace.
+			_, _ = w.Write([]byte(`{"namespaces":["team1"]}`))
 		case r.URL.Path == "/api/v1/auth/config":
 			if !enabled {
 				_, _ = w.Write([]byte(`{"enabled": false}`))
@@ -102,6 +106,10 @@ func TestLoginDeviceFlow(t *testing.T) {
 	cur, _ := cfg.Current()
 	if cur.BearerToken != "DEVICE-TOKEN" {
 		t.Errorf("token = %q, want DEVICE-TOKEN", cur.BearerToken)
+	}
+	// A blank namespace is seeded from the server's first namespace after login.
+	if cur.Namespace != "team1" {
+		t.Errorf("namespace = %q, want team1 (seeded after login)", cur.Namespace)
 	}
 }
 

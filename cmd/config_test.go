@@ -20,27 +20,25 @@ func isolateHome(t *testing.T) string {
 	return filepath.Join(dir, ".rossoctl", "config.yaml")
 }
 
-func TestConfigGetContextsAutoCreates(t *testing.T) {
+func TestConfigGetContextsNeverCreates(t *testing.T) {
 	path := isolateHome(t)
 
-	// No --server: get-contexts should create and seed a context from the
-	// built-in default server, and list it as current.
+	// get-contexts must never create a context: on an empty config it prints
+	// just the header and leaves no config file behind.
 	out, err := execute(t, "config", "get-contexts")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("config file was not created: %v", err)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("get-contexts should not create the config file, stat err = %v", err)
 	}
-	for _, want := range []string{"CURRENT", "NAME", "SERVER", defaultServer, "*"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("get-contexts output missing %q:\n%s", want, out)
-		}
+	if !strings.Contains(out, "NAME") {
+		t.Errorf("get-contexts output missing header:\n%s", out)
 	}
-	// The seeded context is named after the server's hostname.
-	if !strings.Contains(out, "kagenti-ui.localtest.me") {
-		t.Errorf("get-contexts output missing hostname context name:\n%s", out)
+	// No context was seeded, so the default server must not appear.
+	if strings.Contains(out, defaultServer) {
+		t.Errorf("get-contexts should not seed the default-server context:\n%s", out)
 	}
 }
 
@@ -91,6 +89,31 @@ func TestConfigUseContextUnknownErrors(t *testing.T) {
 	isolateHome(t)
 	if _, err := execute(t, "config", "use-context", "does-not-exist"); err == nil {
 		t.Error("use-context on unknown name should error")
+	}
+}
+
+func TestConfigUseContextNeverCreates(t *testing.T) {
+	path := isolateHome(t)
+
+	// use-context on an empty config must error, not seed a context.
+	if _, err := execute(t, "config", "use-context", "anything"); err == nil {
+		t.Error("use-context on an empty config should error")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("use-context should not create the config file, stat err = %v", err)
+	}
+}
+
+func TestContextOverrideNeverCreates(t *testing.T) {
+	path := isolateHome(t)
+
+	// --context naming a context that does not exist must fail without ever
+	// creating (or seeding) a context.
+	if _, err := execute(t, "agents", "--context", "ghost", "list"); err == nil {
+		t.Error("--context on a nonexistent context should error")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("--context should not create the config file, stat err = %v", err)
 	}
 }
 

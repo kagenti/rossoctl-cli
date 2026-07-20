@@ -64,20 +64,27 @@ func serverOrDefault() string {
 var contextOverride string
 
 // resolveContext returns the effective context: the one named by --context
-// when that flag is set (error if no such context exists), otherwise the
-// current context. The config is created (and seeded from the default server)
-// on first use if it does not yet exist.
+// when that flag is set, otherwise the current context.
+//
+// --context selects an existing context and must never create one, so its
+// lookup uses a read-only load and errors if the named context does not exist.
+// The current-context path, by contrast, seeds a default context on first use
+// so resource commands work out of the box.
 func resolveContext() (*config.Context, error) {
-	cfg, err := loadConfig()
-	if err != nil {
-		return nil, err
-	}
 	if contextOverride != "" {
+		cfg, err := loadConfigReadOnly()
+		if err != nil {
+			return nil, err
+		}
 		ctx, ok := cfg.Get(contextOverride)
 		if !ok {
 			return nil, fmt.Errorf("no context named %q", contextOverride)
 		}
 		return ctx, nil
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, err
 	}
 	cur, ok := cfg.Current()
 	if !ok {
@@ -115,7 +122,7 @@ func currentNamespace() (string, error) {
 		return "", err
 	}
 	if ctx.Namespace == "" {
-		return "", fmt.Errorf("context %q has no namespace set; run `rossoctl config set-context --namespace <ns>`", ctx.Name)
+		return "", fmt.Errorf("context %q has no namespace set; run `rossoctl login` to sign in and select one", ctx.Name)
 	}
 	return ctx.Namespace, nil
 }

@@ -23,6 +23,18 @@ func loadConfig() (*config.Config, error) {
 	return config.EnsureContext(path, serverOrDefault())
 }
 
+// loadConfigReadOnly loads the context config without creating or seeding it.
+// A missing file yields an empty Config. It is used by commands that inspect
+// or select existing contexts (get-contexts, use-context) and by the --context
+// override, none of which should ever bring a context into existence.
+func loadConfigReadOnly() (*config.Config, error) {
+	path, err := config.DefaultPath()
+	if err != nil {
+		return nil, err
+	}
+	return config.Load(path)
+}
+
 // --- get-contexts ---
 
 var configGetContextsJSON bool
@@ -32,11 +44,11 @@ var configGetContextsCmd = &cobra.Command{
 	Short: "List configured contexts",
 	Long: `List the contexts persisted in ~/.rossoctl/config.yaml.
 
-If the config file does not exist yet it is created, seeded with a context for
-the default server. With --json the raw config is printed unchanged.`,
+Listing never creates a context: if the config file does not exist or is empty,
+an empty list is shown. With --json the raw config is printed unchanged.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		cfg, err := loadConfig()
+		cfg, err := loadConfigReadOnly()
 		if err != nil {
 			return err
 		}
@@ -77,7 +89,9 @@ var configUseContextCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
-		cfg, err := loadConfig()
+		// Read-only: use-context selects an existing context and must never
+		// create one. SetCurrent errors if name is unknown.
+		cfg, err := loadConfigReadOnly()
 		if err != nil {
 			return err
 		}
