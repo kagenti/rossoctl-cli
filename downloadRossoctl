@@ -111,8 +111,13 @@ latest_release_tag() {
 	tag="${url##*/tag/}"
 	tag="${tag%%[?#]*}" # strip any query/fragment
 	# /releases/latest only points at the newest non-prerelease; if the repo
-	# has none the redirect lands on the releases list and $tag == $url.
-	[ -n "$tag" ] && [ "$tag" != "$url" ] && printf '%s\n' "$tag"
+	# has none the redirect lands on the releases list and $tag == $url. Print
+	# only when a real tag was found; always return success so `set -e` and a
+	# caller's command substitution don't abort on the "no full release" path.
+	if [ -n "$tag" ] && [ "$tag" != "$url" ]; then
+		printf '%s\n' "$tag"
+	fi
+	return 0
 }
 
 # newest_release_tag resolves the newest release tag *including* prereleases by
@@ -120,10 +125,15 @@ latest_release_tag() {
 # the first "tag_name" value. Echoes nothing (and succeeds) when there are no
 # releases at all.
 newest_release_tag() {
-	# One release object per API entry; grab the first tag_name field.
-	http_get "https://api.github.com/repos/${REPO}/releases?per_page=1" |
+	# One release object per API entry; grab the first tag_name field. Capture
+	# the body first rather than piping into `head` (a short-reading `head`
+	# makes the upstream writer die on SIGPIPE, which under `set -e` would abort
+	# the script). Always return success — an empty result is a valid outcome.
+	body="$(http_get "https://api.github.com/repos/${REPO}/releases?per_page=1")" || return 0
+	printf '%s\n' "$body" |
 		sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
-		head -1
+		sed -n '1p'
+	return 0
 }
 
 # latest_version resolves a release tag to install: the newest full release if
