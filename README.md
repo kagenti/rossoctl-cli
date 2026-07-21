@@ -2,76 +2,39 @@
 
 A command-line interface for Rossoctl, built with [Cobra](https://github.com/spf13/cobra).
 
-## Install a release
+## Install
 
 The `downloadRossoctl` script downloads the release archive for your platform
-(detected via `uname` / `uname -m`), extracts it, and installs the binary at
+extracts it, and installs the binary at
 `$HOME/.config/rossoctl/rossoctl`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/kagenti/rossoctl-cli/main/downloadRossoctl | sh
+PATH=$PATH:$HOME/.config/rossoctl
+# alternately, sudo mv $HOME/.config/rossoctl /usr/local/bin
 ```
 
-By default it installs the latest release; pin a version with
-`ROSSOCTL_CLI_VERSION`:
+## Quick usage, for shared OpenShift Rossoctl API servers
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/kagenti/rossoctl-cli/main/downloadRossoctl \
-  | ROSSOCTL_CLI_VERSION=v0.1.0 sh
+# (Choose w3id for shared cluster login)
+rossoctl --server https://kagenti-ui-kagenti-system.apps.ykt3.hcp.res.ibm.com/api/v1 login
+rossoctl agents list
 ```
 
-The script prints how to add `$HOME/.config/rossoctl` to your `PATH`. Each release
-ships prebuilt binaries built by `.github/workflows/release.yml`; the asset
-names are `rossoctl-<version>-<uname>-<uname -m>.tar.gz` (arm64 is labeled
-`arm64` on both Linux and Darwin).
-
-## Layout
-
-This project follows the standard Go CLI layout:
-
-```
-.
-├── main.go                     # Thin entry point; calls cmd.Execute()
-├── cmd/                        # Cobra command tree (grouped by command)
-│   ├── root.go                 # Root command + Execute() + persistent flags
-│   ├── version.go              # `rossoctl version`
-│   ├── unimplemented.go        # newGroup/newLeaf helpers + UNIMPLEMENTED stub
-│   ├── toplevel.go             # apply, install, status, uninstall
-│   ├── login.go                # `rossoctl login` (--token or OAuth device flow)
-│   ├── agents.go               # `rossoctl agents ...` (`list` fetches GET /agents)
-│   ├── authconfig.go           # `rossoctl auth-config` (shows server auth config)
-│   ├── config.go               # `rossoctl config ...` (context management)
-│   ├── gateway.go              # `rossoctl gateway ...`
-│   ├── images.go               # `rossoctl images ...`
-│   ├── namespaces.go           # `rossoctl namespaces ...` (`list` fetches GET /namespaces)
-│   ├── skills.go               # `rossoctl skills ...`
-│   ├── tools.go                # `rossoctl tools ...` (list/delete/import, mirrors agents)
-│   └── ui.go                   # `rossoctl ui ...`
-├── internal/                   # Private application logic (not importable externally)
-│   ├── apiclient/              # HTTP client for the Rossoctl backend API
-│   ├── buildinfo/              # Version metadata formatting
-│   ├── config/                 # ~/.config/rossoctl/config.yaml context persistence
-│   └── deviceflow/             # OAuth 2.0 device authorization grant (Keycloak)
-├── Makefile
-└── go.mod
-```
-
-Design principles:
-
-- **`main.go` stays trivial** — it only calls `cmd.Execute()`.
-- **`cmd/` handles the CLI surface** — flag parsing, help text, and wiring.
-  Each command lives in its own file and registers itself with `rootCmd` in
-  `init()`.
-- **`internal/` holds the real logic** — packages there are free of Cobra and
-  of I/O, so they can be unit-tested directly. `internal/` also prevents other
-  modules from importing this code.
-
-## Build from source
+## Quick usage, for existing Kind cluster Rossoctl API server
 
 ```sh
-make build      # -> ./bin/rossoctl (version info injected via -ldflags)
-make install    # install into $GOBIN
-make test       # go test ./...
+rossoctl login
+rossoctl agents list
+```
+
+## Quick usage, for Alek-style Docker Rossoctl Cortext
+
+```sh
+rossoctl doctor
+rossoctl cortex start
+# (under construction)
 ```
 
 ## Usage
@@ -145,39 +108,6 @@ rossoctl namespaces list --json
 rossoctl -v agents list
 ```
 
-### Contexts and server resolution
+## Full docs
 
-Contexts are persisted in `~/.config/rossoctl/config.yaml` (directory `0700`, file
-`0600`). Each context has a name, a server URI, an optional namespace, and an
-optional bearer token.
-The file is created lazily — the first command that needs it seeds a context
-from the default server (`http://kagenti-ui.localtest.me:8080/api/v1/`) and
-makes it current. Creating a context makes it current.
-
-The server a command talks to is resolved as: an explicit `--server` flag wins
-(and no bearer token is sent); otherwise the current context supplies both the
-server URI and its bearer token. The global `--server` and `--verbose`/`-v`
-flags must appear before the subcommand; `-v` logs each REST request (method,
-URL, status, timing) to stderr.
-
-### Logging in
-
-`rossoctl login --token <token>` stores a token on a context. With `--server`,
-the token is stored on the context named after that server's hostname (created
-if none exists), which becomes current; without `--server`, it is stored on the
-current context. `rossoctl login` (no `--token`) runs the OAuth 2.0 device
-authorization grant (RFC 8628): it reads `keycloak_url`, `realm`, and
-`client_id` from `GET <server>/auth/config`, requests a device code from
-Keycloak, prints a verification URL and one-time code (and best-effort opens a
-browser), polls until you authorize, and saves the resulting bearer token on
-the target context.
-
-The command tree mirrors the subcommands referenced in the Rossoctl docs
-(`agents`, `config`, `gateway`, `images`, `namespaces`, `skills`, `tools`, `ui`,
-plus `auth-config` and the top-level `apply`, `install`, `login`, `status`,
-`uninstall`). The
-`config` context commands, `login`, `auth-config`, `agents list`,
-`agents get`, `agents delete`, `agents import from-image`, `tools list`,
-`tools delete`, `tools import from-image`, and `namespaces list` are
-implemented; other leaf commands currently print
-`UNIMPLEMENTED` as a placeholder.
+See [the documentation](./docs)
