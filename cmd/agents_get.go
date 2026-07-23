@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kagenti/rossoctl-cli/internal/apiclient"
+	"github.com/rossoctl/rossoctl-cli/internal/apiclient"
 )
 
 var agentsGetJSON bool
@@ -186,7 +186,7 @@ func workloadType(a *apiclient.AgentDetail) string {
 	if a.WorkloadType != "" {
 		return a.WorkloadType
 	}
-	if wt := a.Metadata.Labels["kagenti.io/workload-type"]; wt != "" {
+	if wt := a.Metadata.Labels["rossoctl.io/workload-type"]; wt != "" {
 		return wt
 	}
 	return "deployment"
@@ -196,7 +196,7 @@ func agentDescription(a *apiclient.AgentDetail) string {
 	if d := mapString(a.Spec, "description"); d != "" {
 		return d
 	}
-	if d := a.Metadata.Annotations["kagenti.io/description"]; d != "" {
+	if d := a.Metadata.Annotations["rossoctl.io/description"]; d != "" {
 		return d
 	}
 	return "No description available"
@@ -250,7 +250,7 @@ func conditions(a *apiclient.AgentDetail) []map[string]any {
 }
 
 func protocolsFromLabels(labels map[string]string) []string {
-	const prefix = "protocol.kagenti.io/"
+	const prefix = "protocol.rossoctl.io/"
 	var protos []string
 	for k := range labels {
 		if strings.HasPrefix(k, prefix) && len(k) > len(prefix) {
@@ -258,7 +258,7 @@ func protocolsFromLabels(labels map[string]string) []string {
 		}
 	}
 	if len(protos) == 0 {
-		if p := labels["kagenti.io/protocol"]; p != "" {
+		if p := labels["rossoctl.io/protocol"]; p != "" {
 			protos = append(protos, strings.ToUpper(p))
 		}
 	}

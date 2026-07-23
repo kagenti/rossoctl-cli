@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kagenti/rossoctl-cli/internal/apiclient"
+	"github.com/rossoctl/rossoctl-cli/internal/apiclient"
 )
 
 // toolsImportDeploymentType backs the persistent --deployment-type flag on the

@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kagenti/rossoctl-cli/internal/config"
+	"github.com/rossoctl/rossoctl-cli/internal/config"
 )
 
 // loadConfig returns the context config, creating and seeding it from the

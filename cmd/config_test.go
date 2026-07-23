@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kagenti/rossoctl-cli/internal/config"
+	"github.com/rossoctl/rossoctl-cli/internal/config"
 )
 
 // isolateHome points HOME at a fresh temp dir for this test so the context

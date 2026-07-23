@@ -1,4 +1,4 @@
-module github.com/kagenti/rossoctl-cli
+module github.com/rossoctl/rossoctl-cli
 
 go 1.25.6
 

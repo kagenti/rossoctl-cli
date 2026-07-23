@@ -3,7 +3,7 @@ package cmd
 import (
 	"testing"
 
-	"github.com/kagenti/rossoctl-cli/internal/apiclient"
+	"github.com/rossoctl/rossoctl-cli/internal/apiclient"
 )
 
 func TestParseServicePorts(t *testing.T) {

@@ -63,7 +63,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           set -euo pipefail
-          pkg="github.com/kagenti/rossoctl-cli/cmd"
+          pkg="github.com/rossoctl/rossoctl-cli/cmd"
           commit="$(git rev-parse --short HEAD)"
           date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           ldflags="-s -w \

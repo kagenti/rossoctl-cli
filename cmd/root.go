@@ -13,10 +13,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kagenti/rossoctl-cli/internal/apiclient"
-	"github.com/kagenti/rossoctl-cli/internal/config"
-	"github.com/kagenti/rossoctl-cli/internal/cortexclient"
-	"github.com/kagenti/rossoctl-cli/internal/rossoctlclient"
+	"github.com/rossoctl/rossoctl-cli/internal/apiclient"
+	"github.com/rossoctl/rossoctl-cli/internal/config"
+	"github.com/rossoctl/rossoctl-cli/internal/cortexclient"
+	"github.com/rossoctl/rossoctl-cli/internal/rossoctlclient"
 )
 
 // These are set at build time via -ldflags. See the Makefile.
@@ -27,7 +27,7 @@ var (
 )
 
 // defaultServer is the API endpoint used when --server is not supplied.
-const defaultServer = "http://kagenti-ui.localtest.me:8080/api/v1/"
+const defaultServer = "http://rossoctl-ui.localtest.me:8080/api/v1/"
 
 // Persistent flags shared by every command.
 var (
