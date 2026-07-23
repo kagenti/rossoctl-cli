@@ -1,5 +1,5 @@
 BINARY   := rossoctl
-PKG      := github.com/kagenti/rossoctl-cli
+PKG      := github.com/rossoctl/rossoctl-cli
 CMD_PKG  := $(PKG)/cmd
 
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)

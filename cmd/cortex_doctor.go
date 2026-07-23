@@ -15,7 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kagenti/rossoctl-cli/internal/cortexclient"
+	"github.com/rossoctl/rossoctl-cli/internal/cortexclient"
 )
 
 // credentialNames is the ordered set of environment variables / credential

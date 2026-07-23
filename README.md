@@ -9,7 +9,7 @@ extracts it, and installs the binary at
 `$HOME/.config/rossoctl/rossoctl`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/kagenti/rossoctl-cli/main/downloadRossoctl | sh
+curl -fsSL https://raw.githubusercontent.com/rossoctl/rossoctl-cli/main/downloadRossoctl | sh
 PATH=$PATH:$HOME/.config/rossoctl
 # alternately, sudo mv $HOME/.config/rossoctl /usr/local/bin
 ```
@@ -18,7 +18,7 @@ PATH=$PATH:$HOME/.config/rossoctl
 
 ```sh
 # (Choose w3id for shared cluster login)
-rossoctl --server https://kagenti-ui-kagenti-system.apps.ykt3.hcp.res.ibm.com/api/v1 login
+rossoctl --server https://rossoctl-ui-rossoctl-system.apps.ykt3.hcp.res.ibm.com/api/v1 login
 rossoctl agents list
 ```
 
@@ -101,7 +101,7 @@ rossoctl tools import from-image --name weather-mcp --containerImage ghcr.io/x/y
 
 # List namespaces (GET <server>/namespaces)
 rossoctl namespaces list
-rossoctl namespaces list --all      # include non-kagenti-enabled namespaces
+rossoctl namespaces list --all      # include non-rossoctl-enabled namespaces
 rossoctl namespaces list --json
 
 # Log the underlying REST requests to stderr

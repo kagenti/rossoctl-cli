@@ -13,9 +13,9 @@ package rossoctlclient
 import (
 	"context"
 
-	"github.com/kagenti/rossoctl-cli/internal/apiclient"
-	"github.com/kagenti/rossoctl-cli/internal/config"
-	"github.com/kagenti/rossoctl-cli/internal/cortexclient"
+	"github.com/rossoctl/rossoctl-cli/internal/apiclient"
+	"github.com/rossoctl/rossoctl-cli/internal/config"
+	"github.com/rossoctl/rossoctl-cli/internal/cortexclient"
 )
 
 // Rossoctl is the backend contract used by the command layer. Its methods are
@@ -45,7 +45,7 @@ type Rossoctl interface {
 	// CreateTool creates a tool from the given request.
 	CreateTool(ctx context.Context, req *apiclient.CreateToolRequest) (*apiclient.CreateToolResponse, error)
 
-	// ListNamespaces lists namespaces; enabledOnly restricts to kagenti-enabled
+	// ListNamespaces lists namespaces; enabledOnly restricts to rossoctl-enabled
 	// namespaces (the server default).
 	ListNamespaces(ctx context.Context, enabledOnly bool) (*apiclient.NamespaceListResponse, error)
 }

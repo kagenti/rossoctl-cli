@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kagenti/rossoctl-cli/internal/apiclient"
+	"github.com/rossoctl/rossoctl-cli/internal/apiclient"
 )
 
 // fetchEnvVars GETs envURL and parses its body as newline-separated key=value

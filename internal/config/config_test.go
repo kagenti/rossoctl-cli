@@ -228,7 +228,7 @@ func TestEnsureContextSeedsFromDefault(t *testing.T) {
 
 func TestContextNameForServer(t *testing.T) {
 	cases := []struct{ server, want string }{
-		{"http://kagenti-ui.localtest.me:8080/api/v1/", "kagenti-ui.localtest.me"},
+		{"http://rossoctl-ui.localtest.me:8080/api/v1/", "rossoctl-ui.localtest.me"},
 		{"https://api.example.com/api/v1/", "api.example.com"},
 		{"http://127.0.0.1:9090/", "127.0.0.1"},
 		{"not a url", "not a url"},           // unparseable -> raw fallback

@@ -5,7 +5,7 @@
 // trivial and makes the command tree easy to test in isolation.
 package main
 
-import "github.com/kagenti/rossoctl-cli/cmd"
+import "github.com/rossoctl/rossoctl-cli/cmd"
 
 func main() {
 	cmd.Execute()

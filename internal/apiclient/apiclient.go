@@ -416,7 +416,7 @@ type NamespaceListResponse struct {
 }
 
 // ListNamespaces fetches GET /namespaces. When enabledOnly is true (the
-// server default), only kagenti-enabled namespaces are returned; otherwise
+// server default), only rossoctl-enabled namespaces are returned; otherwise
 // all namespaces are returned.
 func (c *Client) ListNamespaces(ctx context.Context, enabledOnly bool) (*NamespaceListResponse, error) {
 	// The server defaults enabled_only to true, so only send the parameter

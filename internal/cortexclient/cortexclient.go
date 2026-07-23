@@ -16,7 +16,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/kagenti/rossoctl-cli/internal/apiclient"
+	"github.com/rossoctl/rossoctl-cli/internal/apiclient"
 )
 
 // now returns the current time. It is a variable so tests can substitute a

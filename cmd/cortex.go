@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kagenti/rossoctl-cli/internal/config"
-	"github.com/kagenti/rossoctl-cli/internal/cortexclient"
+	"github.com/rossoctl/rossoctl-cli/internal/config"
+	"github.com/rossoctl/rossoctl-cli/internal/cortexclient"
 )
 
 // cortexName is the name of the cortex to operate on, bound to the cortex

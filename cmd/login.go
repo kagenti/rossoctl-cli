@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kagenti/rossoctl-cli/internal/config"
-	"github.com/kagenti/rossoctl-cli/internal/deviceflow"
-	"github.com/kagenti/rossoctl-cli/internal/rossoctlclient"
+	"github.com/rossoctl/rossoctl-cli/internal/config"
+	"github.com/rossoctl/rossoctl-cli/internal/deviceflow"
+	"github.com/rossoctl/rossoctl-cli/internal/rossoctlclient"
 )
 
 var loginToken string

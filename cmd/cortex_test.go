@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kagenti/rossoctl-cli/internal/config"
+	"github.com/rossoctl/rossoctl-cli/internal/config"
 )
 
 // loadTestConfig reads the config written under the isolated HOME so tests can

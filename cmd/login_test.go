@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kagenti/rossoctl-cli/internal/config"
+	"github.com/rossoctl/rossoctl-cli/internal/config"
 )
 
 func TestLoginSetsTokenOnCurrentContext(t *testing.T) {
@@ -169,8 +169,8 @@ func TestLoginSeedsContextWhenMissing(t *testing.T) {
 		t.Errorf("seeded server = %q, want %q", cur.Server, defaultServer)
 	}
 	// The seeded context is named after the server's hostname, not the URI.
-	if cur.Name != "kagenti-ui.localtest.me" {
-		t.Errorf("seeded context name = %q, want the hostname kagenti-ui.localtest.me", cur.Name)
+	if cur.Name != "rossoctl-ui.localtest.me" {
+		t.Errorf("seeded context name = %q, want the hostname rossoctl-ui.localtest.me", cur.Name)
 	}
 	if cur.BearerToken != "tok" {
 		t.Errorf("token = %q, want tok", cur.BearerToken)

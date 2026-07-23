@@ -2,7 +2,7 @@
 # downloadRossoctl — install the rossoctl CLI.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/kagenti/rossoctl-cli/main/downloadRossoctl | sh
+#   curl -fsSL https://raw.githubusercontent.com/rossoctl/rossoctl-cli/main/downloadRossoctl | sh
 #
 # Downloads the release archive matching this system's OS (`uname`) and
 # architecture (`uname -m`), extracts it into a temporary directory, and
@@ -18,7 +18,7 @@
 
 set -eu
 
-REPO="kagenti/rossoctl-cli"
+REPO="rossoctl/rossoctl-cli"
 INSTALL_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/rossoctl"
 INSTALL_PATH="${INSTALL_DIR}/rossoctl"
 

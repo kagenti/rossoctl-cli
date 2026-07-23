@@ -3,9 +3,9 @@ package rossoctlclient
 import (
 	"testing"
 
-	"github.com/kagenti/rossoctl-cli/internal/apiclient"
-	"github.com/kagenti/rossoctl-cli/internal/config"
-	"github.com/kagenti/rossoctl-cli/internal/cortexclient"
+	"github.com/rossoctl/rossoctl-cli/internal/apiclient"
+	"github.com/rossoctl/rossoctl-cli/internal/config"
+	"github.com/rossoctl/rossoctl-cli/internal/cortexclient"
 )
 
 func TestNewClientDispatchesOnType(t *testing.T) {

@@ -14,8 +14,8 @@ const agentDetailBody = `{
 	"metadata": {
 		"name": "orders",
 		"namespace": "team1",
-		"labels": {"protocol.kagenti.io/a2a": "true", "kagenti.io/workload-type": "deployment"},
-		"annotations": {"kagenti.io/description": "Handles orders"},
+		"labels": {"protocol.rossoctl.io/a2a": "true", "rossoctl.io/workload-type": "deployment"},
+		"annotations": {"rossoctl.io/description": "Handles orders"},
 		"creationTimestamp": "2026-01-02T03:04:05Z",
 		"uid": "abc-123"
 	},

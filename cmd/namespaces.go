@@ -18,7 +18,7 @@ var namespacesListCmd = &cobra.Command{
 	Short: "List namespaces",
 	Long: `List namespaces reported by the server (GET <server>/namespaces).
 
-By default only kagenti-enabled namespaces are listed; use --all to list every
+By default only rossoctl-enabled namespaces are listed; use --all to list every
 namespace. With --json the raw JSON returned by the server is printed
 unchanged, otherwise the namespaces are printed as a human-readable table.`,
 	Args: cobra.NoArgs,
@@ -66,7 +66,7 @@ func init() {
 	namespacesCmd := newGroup("namespaces", "Manage namespaces")
 
 	namespacesListCmd.Flags().BoolVar(&namespacesListJSON, "json", false, "print the raw JSON response unchanged")
-	namespacesListCmd.Flags().BoolVar(&namespacesListAll, "all", false, "list all namespaces, not just kagenti-enabled ones")
+	namespacesListCmd.Flags().BoolVar(&namespacesListAll, "all", false, "list all namespaces, not just rossoctl-enabled ones")
 
 	namespacesCmd.AddCommand(namespacesListCmd)
 	rootCmd.AddCommand(namespacesCmd)

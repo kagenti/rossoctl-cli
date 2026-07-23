@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kagenti/rossoctl-cli/internal/apiclient"
+	"github.com/rossoctl/rossoctl-cli/internal/apiclient"
 )
 
 func TestNewFileClientDefaults(t *testing.T) {
