@@ -153,6 +153,21 @@ func (c *FileClient) GetAuthConfig(ctx context.Context) (*apiclient.AuthConfig, 
 	return nil, errNotImplemented("GetAuthConfig")
 }
 
+// GetAuthStatus implements rossoctlclient.Rossoctl.
+func (c *FileClient) GetAuthStatus(ctx context.Context) (*apiclient.AuthStatus, error) {
+	return nil, errNotImplemented("GetAuthStatus")
+}
+
+// GetUserInfo implements rossoctlclient.Rossoctl.
+func (c *FileClient) GetUserInfo(ctx context.Context) (*apiclient.UserInfo, error) {
+	return nil, errNotImplemented("GetUserInfo")
+}
+
+// GetPlatformStatus implements rossoctlclient.Rossoctl.
+func (c *FileClient) GetPlatformStatus(ctx context.Context) (*apiclient.PlatformStatus, error) {
+	return nil, errNotImplemented("GetPlatformStatus")
+}
+
 // ListAgents implements rossoctlclient.Rossoctl. It reads AgentsFilename and
 // returns one AgentSummary per stored agent, with Name taken from the map key
 // and CreatedAt from the agent's Created timestamp. The namespace argument is
@@ -263,6 +278,11 @@ func (c *FileClient) saveAgents(agents map[string]Agent) error {
 // ListTools implements rossoctlclient.Rossoctl.
 func (c *FileClient) ListTools(ctx context.Context, namespace string) (*apiclient.ToolListResponse, error) {
 	return nil, errNotImplemented("ListTools")
+}
+
+// GetTool implements rossoctlclient.Rossoctl.
+func (c *FileClient) GetTool(ctx context.Context, namespace, name string) (*apiclient.ToolDetail, error) {
+	return nil, errNotImplemented("GetTool")
 }
 
 // DeleteTool implements rossoctlclient.Rossoctl.

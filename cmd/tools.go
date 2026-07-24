@@ -149,14 +149,13 @@ func init() {
 	// --namespace, matching the agents group.
 	toolsCmd.PersistentFlags().StringVar(&toolsNamespaceFlag, "namespace", "",
 		"namespace for tools subcommands (overrides the context's namespace)")
-	toolsCmd.PersistentFlags().StringVar(&contextOverride, "context", "",
-		"use this context instead of the current one")
 
 	toolsListCmd.Flags().BoolVar(&toolsListJSON, "json", false, "print the raw JSON response unchanged")
 	toolsListCmd.Flags().BoolVarP(&toolsListAllNamespaces, "all-namespaces", "A", false, "list tools across all namespaces discovered from the server")
 
 	toolsCmd.AddCommand(
 		toolsListCmd,
+		toolsGetCmd,
 		newToolsImportCmd(),
 		toolsDeleteCmd,
 	)

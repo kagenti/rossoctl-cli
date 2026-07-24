@@ -200,11 +200,11 @@ current when none exists.`,
 func init() {
 	cortexCmd := newGroup("cortex", "Manage cortexes")
 
-	// Persistent so every cortex subcommand inherits them.
+	// Persistent so every cortex subcommand inherits it. --context is a
+	// root-level persistent flag inherited here; for cortex it selects an
+	// existing cortex-typed context instead of --cortex.
 	cortexCmd.PersistentFlags().StringVar(&cortexName, "cortex", defaultCortexName,
 		"name of the cortex to operate on")
-	cortexCmd.PersistentFlags().StringVar(&contextOverride, "context", "",
-		"use this cortex context instead of --cortex")
 
 	// start-specific flags (mirroring rossoctlx's _add_start_args).
 	addStartArgs(cortexStartCmd)

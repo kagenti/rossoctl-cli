@@ -282,6 +282,38 @@ func TestGetAgent(t *testing.T) {
 	}
 }
 
+func TestGetTool(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{
+			"metadata": {"name":"weather-mcp","namespace":"team1","uid":"u9"},
+			"spec": {"replicas": 1},
+			"status": {"conditions": [{"type":"Available","status":"True"}]},
+			"workloadType": "deployment",
+			"readyStatus": "Ready",
+			"service": {"name":"weather-mcp","type":"ClusterIP","clusterIP":"5.6.7.8","ports":[{"name":"mcp","port":8000,"targetPort":8000}]}
+		}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/"}
+	tool, err := c.GetTool(context.Background(), "team1", "weather-mcp")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotPath != "/api/v1/tools/team1/weather-mcp" {
+		t.Errorf("path = %q, want %q", gotPath, "/api/v1/tools/team1/weather-mcp")
+	}
+	if tool.Metadata.Name != "weather-mcp" || tool.ReadyStatus != "Ready" {
+		t.Errorf("unexpected tool: %+v", tool.Metadata)
+	}
+	if tool.Service == nil || tool.Service.ClusterIP != "5.6.7.8" {
+		t.Errorf("service not decoded: %+v", tool.Service)
+	}
+}
+
 func TestDeleteAgent(t *testing.T) {
 	var gotMethod, gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -502,5 +534,77 @@ func TestGetAuthConfigServerError(t *testing.T) {
 	c := &Client{BaseURL: srv.URL + "/api/v1/"}
 	if _, err := c.GetAuthConfig(context.Background()); err == nil {
 		t.Fatal("expected an error on 500, got nil")
+	}
+}
+
+func TestGetAuthStatus(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"enabled": true, "authenticated": true, "keycloak_url": "https://kc", "realm": "rossoctl", "client_id": "rossoctl-ui"}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/"}
+	status, err := c.GetAuthStatus(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotPath != "/api/v1/auth/status" {
+		t.Errorf("path = %q, want /api/v1/auth/status", gotPath)
+	}
+	if !status.Enabled || !status.Authenticated {
+		t.Errorf("unexpected status: %+v", status)
+	}
+	if status.Realm == nil || *status.Realm != "rossoctl" {
+		t.Errorf("realm = %v, want rossoctl", status.Realm)
+	}
+}
+
+func TestGetUserInfo(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{"username": "alice", "email": "a@x", "roles": ["admin"], "authenticated": true}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/"}
+	info, err := c.GetUserInfo(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotPath != "/api/v1/auth/me" {
+		t.Errorf("path = %q, want /api/v1/auth/me", gotPath)
+	}
+	if info.Username != "alice" || !info.Authenticated || len(info.Roles) != 1 {
+		t.Errorf("unexpected user info: %+v", info)
+	}
+}
+
+func TestGetPlatformStatus(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte(`{
+			"components": [{"name": "Istio", "status": "Ready"}],
+			"registry": {"clusterBuildStrategyPresent": true, "clusterBuildStrategies": ["buildah"], "registryEndpoint": "r:5000"}
+		}`))
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL + "/api/v1/"}
+	status, err := c.GetPlatformStatus(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotPath != "/api/v1/config/platform-status" {
+		t.Errorf("path = %q, want /api/v1/config/platform-status", gotPath)
+	}
+	if len(status.Components) != 1 || status.Components[0].Name != "Istio" {
+		t.Errorf("unexpected components: %+v", status.Components)
+	}
+	if !status.Registry.ClusterBuildStrategyPresent || status.Registry.RegistryEndpoint != "r:5000" {
+		t.Errorf("unexpected registry: %+v", status.Registry)
 	}
 }

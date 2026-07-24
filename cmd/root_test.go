@@ -134,42 +134,30 @@ func TestVersionCommand(t *testing.T) {
 // full path from the root. Each must print UNIMPLEMENTED and exit without
 // error.
 var unimplementedCommands = [][]string{
-	{"apply"},
-	{"install"},
+	// "install" is implemented (prints setup instructions); tested in install_test.go.
 	// "login" is implemented (sets the current context's token); tested in login_test.go.
-	{"status"},
-	{"uninstall"},
-	{"agents", "add-skill"},
+	// "status" is implemented (auth + platform status); tested in status_test.go.
 	{"agents", "chat"},
-	{"agents", "connect"},
 	// "agents delete" is implemented (DELETE /agents/<ns>/<name>); tested in
 	// agents_delete_test.go.
 	// "agents import" has its own from-image/from-source subcommands (tested
 	// in agents_import_test.go).
-	{"agents", "describe"},
-	{"agents", "hibernate"},
 	// "agents list" is implemented (fetches GET /agents) and tested separately.
-	{"agents", "promote"},
-	{"agents", "scale"},
-	{"agents", "wake"},
-	{"gateway", "routes"},
-	{"images", "preload"},
-	{"skills", "list"},
-	{"skills", "publish"},
 	// tools list/get/delete and import from-image are implemented; tested in
-	// tools_test.go / tools_import_test.go.
-	{"ui", "open"},
+	// tools_test.go / tools_get_test.go / tools_import_test.go.
+	// "ui open" is implemented (opens the context server's site root in a
+	// browser); tested in ui_test.go.
 }
 
 // TestUnimplementedDescriptionsPrefixed verifies that stub commands advertise
 // their status in subcommand listings: their Short description begins with
 // "UNIMPLEMENTED", while implemented commands do not.
 func TestUnimplementedDescriptionsPrefixed(t *testing.T) {
-	// A stub leaf: `agents describe`.
-	if c, _, _ := rootCmd.Find([]string{"agents", "describe"}); c == nil {
-		t.Fatal("agents describe not found")
+	// A stub leaf: `agents chat`.
+	if c, _, _ := rootCmd.Find([]string{"agents", "chat"}); c == nil {
+		t.Fatal("agents chat not found")
 	} else if !strings.HasPrefix(c.Short, "UNIMPLEMENTED") {
-		t.Errorf("stub `agents describe` Short = %q, want UNIMPLEMENTED prefix", c.Short)
+		t.Errorf("stub `agents chat` Short = %q, want UNIMPLEMENTED prefix", c.Short)
 	}
 
 	// A stub import subcommand: `agents import from-source`.
@@ -216,7 +204,7 @@ func TestUnimplementedCommandsPrintPlaceholder(t *testing.T) {
 // description, so we check that the standalone placeholder line was not
 // printed rather than that the substring is absent.
 func TestGroupsAreNotRunnable(t *testing.T) {
-	groups := []string{"agents", "config", "gateway", "images", "namespaces", "skills", "tools", "ui"}
+	groups := []string{"agents", "config", "namespaces", "tools", "ui"}
 	for _, g := range groups {
 		t.Run(g, func(t *testing.T) {
 			out, err := execute(t, g)

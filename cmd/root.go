@@ -61,8 +61,8 @@ func serverOrDefault() string {
 }
 
 // contextOverride is the name of a context to use instead of the current one.
-// It is bound to the agents group's --context flag; empty means "use the
-// current context".
+// It is bound to the root command's persistent --context flag, so every command
+// inherits it; empty means "use the current context".
 var contextOverride string
 
 // resolveContext returns the effective context: the one named by --context
@@ -187,4 +187,6 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	rootCmd.PersistentFlags().StringVar(&server, "server", "", "Rossoctl API server URI (overrides the current context; default: current context's server)")
+	rootCmd.PersistentFlags().StringVar(&contextOverride, "context", "",
+		"use this context instead of the current one")
 }

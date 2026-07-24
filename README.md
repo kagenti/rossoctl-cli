@@ -44,6 +44,9 @@ rossoctl --help
 rossoctl version
 rossoctl agents --help
 
+# Print instructions for installing the platform (clone + per-cluster setup script)
+rossoctl install
+
 # Manage contexts (persisted in ~/.config/rossoctl/config.yaml, kubectl-style)
 rossoctl config get-contexts                    # created + seeded on first use
 rossoctl config create-context --name dev \
@@ -60,6 +63,11 @@ rossoctl login --server http://host:8080/api/v1/ --token <token>   # target the 
 rossoctl auth-config
 rossoctl auth-config --json
 rossoctl --server http://my-host:8080/api/v1/ auth-config
+
+# Show current session + platform status, mirroring the web UI admin page
+# (GET <server>/auth/status, /auth/me, /config/platform-status)
+rossoctl status
+rossoctl status --json                          # raw API data as JSON
 
 # List agents (GET <server>/agents)
 rossoctl agents list                            # single namespace: agents --namespace, else current context
@@ -83,15 +91,19 @@ rossoctl agents import --deployment-type sandbox from-image \
 # `agents --namespace` overrides the context's namespace for any agents subcommand
 rossoctl agents --namespace team2 get orders    # -> GET /agents/team2/orders
 
-# `agents --context` uses a named context instead of the current one (its server, token, namespace)
-rossoctl agents --context prod get orders
-rossoctl agents --context prod --namespace teamX list   # --namespace still overrides the context's namespace
+# `--context` is a top-level flag: it uses a named context instead of the current
+# one (its server, token, namespace). It may appear before or after the subcommand.
+rossoctl --context prod agents get orders
+rossoctl agents --context prod get orders               # equivalent
+rossoctl --context prod agents --namespace teamX list   # --namespace still overrides the context's namespace
 
 # Tools mirror the agents commands, against the /tools endpoint.
 # --namespace, --context, --all-namespaces (-A), and --json behave as for agents.
 rossoctl tools list                              # single namespace (context, or --namespace)
 rossoctl tools list --all-namespaces             # discover and list across all
 rossoctl tools --namespace team2 list --json
+rossoctl tools get weather-mcp                   # GET /tools/<namespace>/weather-mcp (single-column detail)
+rossoctl tools get weather-mcp --json            # raw JSON response
 rossoctl tools delete weather-mcp                # DELETE /tools/<namespace>/weather-mcp
 rossoctl tools import from-image --name weather-mcp --containerImage ghcr.io/x/y:latest  # POST /tools
 rossoctl tools import --deployment-type statefulset from-image \

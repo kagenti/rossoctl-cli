@@ -169,6 +169,79 @@ func (c *Client) GetAuthConfig(ctx context.Context) (*AuthConfig, error) {
 	return &cfg, nil
 }
 
+// AuthStatus mirrors the backend's AuthStatusResponse (GET /auth/status): what
+// the web UI's Current Session panel reads for authentication state. Optional
+// values are pointers so "absent" (null) is distinct from an empty string.
+type AuthStatus struct {
+	Enabled       bool    `json:"enabled"`
+	Authenticated bool    `json:"authenticated"`
+	KeycloakURL   *string `json:"keycloak_url"`
+	Realm         *string `json:"realm"`
+	ClientID      *string `json:"client_id"`
+}
+
+// GetAuthStatus fetches GET /auth/status from the server.
+func (c *Client) GetAuthStatus(ctx context.Context) (*AuthStatus, error) {
+	var status AuthStatus
+	if err := c.getJSON(ctx, "auth/status", &status); err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
+
+// UserInfo mirrors the backend's UserInfoResponse (GET /auth/me): the current
+// user shown in the web UI's Current Session panel. When auth is disabled or
+// the request is unauthenticated the server returns a guest user.
+type UserInfo struct {
+	Username      string   `json:"username"`
+	Email         string   `json:"email"`
+	Roles         []string `json:"roles"`
+	Authenticated bool     `json:"authenticated"`
+}
+
+// GetUserInfo fetches GET /auth/me from the server. This endpoint uses optional
+// auth: it returns a guest user rather than an error when unauthenticated.
+func (c *Client) GetUserInfo(ctx context.Context) (*UserInfo, error) {
+	var info UserInfo
+	if err := c.getJSON(ctx, "auth/me", &info); err != nil {
+		return nil, err
+	}
+	return &info, nil
+}
+
+// ComponentStatus mirrors the backend's ComponentStatus: the health of one
+// platform component (Istio, Keycloak, SPIRE, etc.). status is one of
+// "Ready", "Degraded", "Missing", or "Unknown".
+type ComponentStatus struct {
+	Name   string `json:"name"`
+	Status string `json:"status"`
+}
+
+// RegistryBuildInfo mirrors the backend's RegistryBuildInfo: the container
+// registry endpoint and Shipwright ClusterBuildStrategy availability.
+type RegistryBuildInfo struct {
+	ClusterBuildStrategyPresent bool     `json:"clusterBuildStrategyPresent"`
+	ClusterBuildStrategies      []string `json:"clusterBuildStrategies"`
+	RegistryEndpoint            string   `json:"registryEndpoint"`
+}
+
+// PlatformStatus mirrors the backend's PlatformStatusResponse
+// (GET /config/platform-status): the data behind the web UI's Platform Status
+// panel.
+type PlatformStatus struct {
+	Components []ComponentStatus `json:"components"`
+	Registry   RegistryBuildInfo `json:"registry"`
+}
+
+// GetPlatformStatus fetches GET /config/platform-status from the server.
+func (c *Client) GetPlatformStatus(ctx context.Context) (*PlatformStatus, error) {
+	var status PlatformStatus
+	if err := c.getJSON(ctx, "config/platform-status", &status); err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
+
 // ResourceLabels mirrors the backend's ResourceLabels model.
 type ResourceLabels struct {
 	Protocol  []string `json:"protocol"`
@@ -347,6 +420,23 @@ func (c *Client) ListTools(ctx context.Context, namespace string) (*ToolListResp
 		return nil, err
 	}
 	return &resp, nil
+}
+
+// ToolDetail mirrors the backend's GET /tools/{namespace}/{name} response. It
+// has the same shape as AgentDetail (metadata + free-form spec/status +
+// workloadType/readyStatus + optional service), so it is an alias to reuse the
+// same renderer helpers.
+type ToolDetail = AgentDetail
+
+// GetTool fetches GET /tools/<namespace>/<name>.
+func (c *Client) GetTool(ctx context.Context, namespace, name string) (*ToolDetail, error) {
+	path := "tools/" + url.PathEscape(namespace) + "/" + url.PathEscape(name)
+
+	var detail ToolDetail
+	if err := c.getJSON(ctx, path, &detail); err != nil {
+		return nil, err
+	}
+	return &detail, nil
 }
 
 // DeleteTool issues DELETE /tools/<namespace>/<name>.
