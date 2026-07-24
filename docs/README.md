@@ -24,17 +24,15 @@ This project follows the standard Go CLI layout:
 │   ├── root.go                 # Root command + Execute() + persistent flags
 │   ├── version.go              # `rossoctl version`
 │   ├── unimplemented.go        # newGroup/newLeaf helpers + UNIMPLEMENTED stub
-│   ├── toplevel.go             # apply, install, status, uninstall
+│   ├── install.go              # `rossoctl install` (prints setup instructions)
+│   ├── status.go               # `rossoctl status` (session + platform status)
 │   ├── login.go                # `rossoctl login` (--token or OAuth device flow)
 │   ├── agents.go               # `rossoctl agents ...` (`list` fetches GET /agents)
 │   ├── authconfig.go           # `rossoctl auth-config` (shows server auth config)
 │   ├── config.go               # `rossoctl config ...` (context management)
-│   ├── gateway.go              # `rossoctl gateway ...`
-│   ├── images.go               # `rossoctl images ...`
 │   ├── namespaces.go           # `rossoctl namespaces ...` (`list` fetches GET /namespaces)
-│   ├── skills.go               # `rossoctl skills ...`
-│   ├── tools.go                # `rossoctl tools ...` (list/delete/import, mirrors agents)
-│   └── ui.go                   # `rossoctl ui ...`
+│   ├── tools.go                # `rossoctl tools ...` (list/get/delete/import, mirrors agents)
+│   └── ui.go                   # `rossoctl ui open` (opens the context server's site root)
 ├── internal/                   # Private application logic (not importable externally)
 │   ├── apiclient/              # HTTP client for the Rossoctl backend API
 │   ├── buildinfo/              # Version metadata formatting
@@ -90,11 +88,10 @@ browser), polls until you authorize, and saves the resulting bearer token on
 the target context.
 
 The command tree mirrors the subcommands referenced in the Rossoctl docs
-(`agents`, `config`, `gateway`, `images`, `namespaces`, `skills`, `tools`, `ui`,
-plus `auth-config` and the top-level `apply`, `install`, `login`, `status`,
-`uninstall`). The
-`config` context commands, `login`, `auth-config`, `agents list`,
-`agents get`, `agents delete`, `agents import from-image`, `tools list`,
-`tools delete`, `tools import from-image`, and `namespaces list` are
-implemented; other leaf commands currently print
-`UNIMPLEMENTED` as a placeholder.
+(`agents`, `config`, `namespaces`, `tools`, `ui`,
+plus `auth-config` and the top-level `install`, `login`, `status`). The
+`config` context commands, `login`, `auth-config`, `install`, `status`,
+`agents list`, `agents get`, `agents delete`, `agents import from-image`,
+`tools list`, `tools get`, `tools delete`, `tools import from-image`,
+`namespaces list`, and `ui open` are implemented; other leaf commands currently
+print `UNIMPLEMENTED` as a placeholder.

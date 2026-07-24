@@ -24,6 +24,17 @@ type Rossoctl interface {
 	// GetAuthConfig fetches the server's auth configuration.
 	GetAuthConfig(ctx context.Context) (*apiclient.AuthConfig, error)
 
+	// GetAuthStatus fetches the server's authentication status (GET /auth/status).
+	GetAuthStatus(ctx context.Context) (*apiclient.AuthStatus, error)
+
+	// GetUserInfo fetches the current user (GET /auth/me); returns a guest user
+	// when unauthenticated rather than erroring.
+	GetUserInfo(ctx context.Context) (*apiclient.UserInfo, error)
+
+	// GetPlatformStatus fetches aggregated platform status
+	// (GET /config/platform-status).
+	GetPlatformStatus(ctx context.Context) (*apiclient.PlatformStatus, error)
+
 	// ListAgents lists agents in the given namespace (empty => server default).
 	ListAgents(ctx context.Context, namespace string) (*apiclient.AgentListResponse, error)
 
@@ -38,6 +49,9 @@ type Rossoctl interface {
 
 	// ListTools lists tools in the given namespace (empty => server default).
 	ListTools(ctx context.Context, namespace string) (*apiclient.ToolListResponse, error)
+
+	// GetTool fetches a single tool by namespace and name.
+	GetTool(ctx context.Context, namespace, name string) (*apiclient.ToolDetail, error)
 
 	// DeleteTool deletes a tool by namespace and name.
 	DeleteTool(ctx context.Context, namespace, name string) (*apiclient.DeleteResponse, error)

@@ -167,25 +167,16 @@ func init() {
 	// --namespace: that belongs to `agents list --namespaces`.
 	agentsCmd.PersistentFlags().StringVar(&agentsNamespaceFlag, "namespace", "",
 		"namespace for agents subcommands (overrides the context's namespace)")
-	agentsCmd.PersistentFlags().StringVar(&contextOverride, "context", "",
-		"use this context instead of the current one")
 
 	agentsListCmd.Flags().BoolVar(&agentsListJSON, "json", false, "print the raw JSON response unchanged")
 	agentsListCmd.Flags().BoolVarP(&agentsListAllNamespaces, "all-namespaces", "A", false, "list agents across all namespaces discovered from the server")
 
 	agentsCmd.AddCommand(
-		newLeaf("add-skill [name]", "Add a skill to an agent"),
 		newLeaf("chat [name]", "Start an interactive chat with an agent"),
-		newLeaf("connect [name]", "Connect an agent to a tool"),
 		agentsDeleteCmd,
 		newAgentsImportCmd(),
-		newLeaf("describe [name]", "Show detailed information about an agent"),
 		agentsGetCmd,
-		newLeaf("hibernate [name]", "Hibernate an agent"),
 		agentsListCmd,
-		newLeaf("promote [name]", "Promote an agent between namespaces"),
-		newLeaf("scale [name]", "Scale an agent"),
-		newLeaf("wake [name]", "Wake a hibernated agent"),
 	)
 	rootCmd.AddCommand(agentsCmd)
 }

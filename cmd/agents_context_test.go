@@ -79,6 +79,43 @@ func TestAgentsContextOverridesCurrent(t *testing.T) {
 	}
 }
 
+func TestTopLevelContextFlag(t *testing.T) {
+	isolateHome(t)
+
+	// --context is a root-level persistent flag, so it may appear before the
+	// subcommand path, not only after the group name.
+	current := newContextTestServer(t, `"team1"`)
+	other := newContextTestServer(t, `"team9"`)
+
+	if _, err := execute(t, "config", "create-context",
+		"--name", "dev", "--server", current.srv.URL+"/api/v1/", "--namespace", "team1"); err != nil {
+		t.Fatalf("create-context dev: %v", err)
+	}
+	if _, err := execute(t, "config", "create-context",
+		"--name", "prod", "--server", other.srv.URL+"/api/v1/", "--namespace", "team9",
+		"--bearer-token", "prod-token"); err != nil {
+		t.Fatalf("create-context prod: %v", err)
+	}
+	if _, err := execute(t, "config", "use-context", "dev"); err != nil {
+		t.Fatalf("use-context dev: %v", err)
+	}
+
+	// --context placed at the top level (before "agents") must still route to
+	// the prod server, namespace, and token.
+	if _, err := execute(t, "--context", "prod", "agents", "get", "orders"); err != nil {
+		t.Fatalf("--context prod agents get: %v", err)
+	}
+	if other.getPath != "/api/v1/agents/team9/orders" {
+		t.Errorf("get path = %q, want /api/v1/agents/team9/orders", other.getPath)
+	}
+	if other.auth != "Bearer prod-token" {
+		t.Errorf("auth = %q, want Bearer prod-token", other.auth)
+	}
+	if current.getPath != "" {
+		t.Errorf("current (dev) server should not have been called, got path %q", current.getPath)
+	}
+}
+
 func TestAgentsListUsesContextNamespace(t *testing.T) {
 	isolateHome(t)
 
